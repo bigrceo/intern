@@ -26,7 +26,7 @@ export const BRAND = {
   },
   social: {
     x: process.env.NEXT_PUBLIC_X_URL ?? "",
-    telegramBot: process.env.TELEGRAM_BOT_USERNAME ?? process.env.NEXT_PUBLIC_TELEGRAM_BOT ?? "",
+    telegramBot: process.env.NEXT_PUBLIC_TELEGRAM_BOT || "",
     github: process.env.NEXT_PUBLIC_GITHUB_URL ?? "",
   },
 } as const;
