@@ -1,0 +1,122 @@
+import { beforeAll, describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import * as store from "@/intern/store";
+import { buildTools } from "@/intern/tools";
+import { decide, describe as describeProposal } from "@/intern/proposals";
+import { launchIntern, MAX_INTERNS, familyNote } from "@/intern/launch";
+import { fallbackSpec } from "@/intern/compile";
+import type { JobSpec } from "@/intern/spec";
+import type { LocalTool } from "@/intern/llm";
+
+const OWNER = "0x00000000000000000000000000000000000000c1";
+
+/** No network: Robinhood RPC is unreachable, the bag comes from the cached owner row. */
+const noNet: typeof fetch = async () => new Response("{}", { status: 503 });
+
+const parentSpec: JobSpec = { ...fallbackSpec({ sentence: "watch $ORBIO liquidity every 6h", template: "market-watch", name: "Sentry" }) };
+
+const call = (t: LocalTool, a: unknown) => (t.execute as (a: unknown) => Promise<Record<string, unknown>>)(a);
+
+describe("an intern spawns an intern", () => {
+  beforeAll(async () => {
+    rmSync("/tmp/intern-spawn.db", { force: true });
+    process.env.DATABASE_URL = "file:/tmp/intern-spawn.db";
+    process.env.SECRET_KEY = "test";
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    await store.setOwnerBag(OWNER, 250_000);
+    const r = await launchIntern(OWNER, parentSpec, { runNow: false, fetch: noNet });
+    expect(r.ok).toBe(true);
+  });
+
+  const parent = async () => (await store.listInterns(OWNER)).find((m) => m.name === "Sentry")!;
+
+  it("spawn_intern is offered to a root intern, drafts a proposal, and refuses a second one in the same run", async () => {
+    const p = await parent();
+    const trace: string[] = [];
+    const built = buildTools(["token_market", "spawn_intern"], {
+      delivery: {},
+      fetch: noNet,
+      propose: { owner: OWNER, internId: p.id, internName: p.name, runId: null, autopilot: false },
+      compile: async (i) => fallbackSpec(i),
+      trace: (e) => trace.push(`${e.tool}: ${e.summary}`),
+    });
+    const spawn = built.tools.find((t) => t.name === "spawn_intern")!;
+    expect(spawn).toBeTruthy();
+    const r = await call(spawn, { sentence: "watch wallet 0x8366a39cc670b4001a1121b8f6a443a643e40951 and tell me when it moves ORBIO", template: "market-watch", name: "Shadow", reason: "0x8366 moved 217k ORBIO twice today and is not in any current job" });
+    expect(r.proposed).toBe(true);
+    expect(r.name).toBe("Shadow");
+    expect(trace[0]).toMatch(/^spawn_intern: pending · p_/);
+    const again = await call(spawn, { sentence: "another one please that watches something else", template: "custom", reason: "because the first one was fun to make" });
+    expect(again.error).toMatch(/already proposed/);
+
+    const pending = await store.listProposals(OWNER, "pending");
+    expect(pending).toHaveLength(1);
+    expect(pending[0].kind).toBe("spawn_intern");
+    const d = describeProposal(pending[0].kind, pending[0].payload);
+    expect(d.title).toBe("Spawn a intern: Shadow");
+    expect(d.body).toMatch(/0x8366 moved 217k ORBIO/);
+    expect(d.body).toMatch(/every 4 hours|every 6 hours/);
+    expect(await store.listInterns(OWNER)).toHaveLength(1);
+  });
+
+  it("approve creates the child with the parent recorded; the child is not offered spawn_intern", async () => {
+    const p = await parent();
+    const [pending] = await store.listProposals(OWNER, "pending");
+    const r = await decide(pending.id, "approve", noNet);
+    expect(r.ok && r.status).toBe("executed");
+    const all = await store.listInterns(OWNER);
+    expect(all).toHaveLength(2);
+    const child = all.find((m) => m.name === "Shadow")!;
+    expect(child.parentId).toBe(p.id);
+    expect(child.spec.sources).toContain("0x8366a39cc670b4001a1121b8f6a443a643e40951");
+    expect((r as unknown as { result: { internId: string } }).result.internId).toBe(child.id);
+
+    // The runner only adds spawn_intern for root interns; a child built without compile gets nothing.
+    const built = buildTools([...child.spec.tools, "spawn_intern"], { delivery: {}, propose: { owner: OWNER, internId: child.id, internName: child.name, runId: null, autopilot: false } });
+    expect(built.tools.map((t) => t.name)).not.toContain("spawn_intern");
+  });
+
+  it("reject leaves the family as it was", async () => {
+    const p = await parent();
+    const built = buildTools(["spawn_intern"], { delivery: {}, propose: { owner: OWNER, internId: p.id, internName: p.name, runId: null, autopilot: false }, compile: async (i) => fallbackSpec(i) });
+    await call(built.tools[0], { sentence: "digest orbio.so/build every morning", template: "digest", reason: "the owner keeps asking about it in reports" });
+    const [pending] = await store.listProposals(OWNER, "pending");
+    const r = await decide(pending.id, "reject");
+    expect(r.ok && r.status).toBe("rejected");
+    expect(await store.listInterns(OWNER)).toHaveLength(2);
+  });
+
+  it("spawns always ask, even on autopilot (autopilot covers the intern's own actions, not new interns)", async () => {
+    const p = await parent();
+    const built = buildTools(["spawn_intern"], { delivery: {}, fetch: noNet, propose: { owner: OWNER, internId: p.id, internName: p.name, runId: null, autopilot: true }, compile: async (i) => fallbackSpec(i) });
+    const r = await call(built.tools[0], { sentence: "digest orbio.so/build every morning", template: "digest", name: "Morning", reason: "the owner keeps asking about it in reports" });
+    expect(r.executed).toBeUndefined();
+    expect(r.proposed).toBe(true);
+    expect((await store.listInterns(OWNER)).map((m) => m.name).sort()).toEqual(["Sentry", "Shadow"]);
+    expect((await store.listProposals(OWNER, "pending")).some((x) => x.kind === "spawn_intern" && x.internId === p.id)).toBe(true);
+  });
+
+  it("the per-wallet cap holds, with a plain reason", async () => {
+    const before = (await store.listInterns(OWNER)).length;
+    for (let i = before; i < MAX_INTERNS; i++) expect((await launchIntern(OWNER, { ...parentSpec, name: `Extra${i}` }, { runNow: false, fetch: noNet })).ok).toBe(true);
+    const r = await launchIntern(OWNER, { ...parentSpec, name: "OneTooMany" }, { runNow: false, fetch: noNet });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(new RegExp(`already have ${MAX_INTERNS} interns`));
+  });
+
+  it("familyNote is silent when the income covers everyone and honest when it does not", () => {
+    const sib = (burn: number) => ({ burnPerDayUsd: burn, status: "idle" }) as store.InternRow;
+    expect(familyNote([sib(0.01)], 0.01, 1)).toBe("");
+    expect(familyNote([sib(0.02), sib(0.02)], 0.02, 0.035)).toMatch(/3 interns can spend up to about \$0\.060\/day against the \$0\.030\/day/);
+  });
+});
+
+describe("the per-wallet cap holds under a race", () => {
+  it("six launches at once with room for one create exactly one", async () => {
+    const O = "0x00000000000000000000000000000000000000d7";
+    for (let i = 0; i < MAX_INTERNS - 1; i++) expect((await launchIntern(O, { ...parentSpec, name: `Pre${i}` }, { runNow: false, fetch: noNet })).ok).toBe(true);
+    const results = await Promise.all(Array.from({ length: 6 }, (_, i) => launchIntern(O, { ...parentSpec, name: `Race${i}` }, { runNow: false, fetch: noNet })));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect((await store.listInterns(O)).length).toBe(MAX_INTERNS);
+  });
+});

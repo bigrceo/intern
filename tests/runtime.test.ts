@@ -1,0 +1,214 @@
+import { describe, expect, it } from "vitest";
+import { compileJob, fallbackSpec } from "@/intern/compile";
+import { plan } from "@/intern/budget";
+import { runIntern } from "@/intern/runner";
+import { encodeAnchor, ANCHOR_TO } from "@/intern/anchor";
+import { JobSpec, type JobSpec as Spec } from "@/intern/spec";
+import { decodeAbiParameters } from "viem";
+import { fakeOrbio } from "./fakes";
+
+const KEY = process.env.OPENROUTER_API_KEY!;
+if (!KEY) throw new Error("OPENROUTER_API_KEY required");
+const OWNER = "0x7a3f9c21bd4e8f10a2b6c9d3e5f7a1b2c3d4e9c2";
+const ORBIO_CA = "0xAa07A0e9209e16aC99708C3EC70159c6eF3128A3";
+
+const marketWatch: Spec = {
+  name: "Lumen",
+  template: "market-watch",
+  objective: `Brief me on $ORBIO (${ORBIO_CA}) on Robinhood Chain: price, liquidity, volume and holder changes in the last day.`,
+  cadence: "6h",
+  sources: ["$ORBIO", ORBIO_CA],
+  checks: [],
+  tools: ["token_market", "chain_read", "deliver"],
+  output: { kind: "brief", maxWords: 150, alwaysReport: true },
+  voice: "terse, concrete, sources named, no hype",
+  spendCapUsd: 0.03,
+  model: "auto", tripwire: null,
+};
+
+describe("compile", () => {
+  it("turns a sentence into a valid JobSpec on a real model", async () => {
+    const spec = await compileJob(KEY, {
+      sentence: "Ping me on Telegram if $ORBIO liquidity moves 10% in either direction.",
+      template: "market-watch",
+    });
+    expect(JobSpec.safeParse(spec).success).toBe(true);
+    expect(spec.output.alwaysReport).toBe(false);
+    expect(spec.tools).toContain("deliver");
+    // A liquidity alert rides the free tripwire; the model run is only a heartbeat.
+    expect(spec.tripwire).toMatchObject({ metric: "liquidity", thresholdPct: 10 });
+    expect(spec.cadence).toBe("24h");
+    console.log("compiled:", JSON.stringify(spec));
+  });
+
+  it("fallback spec is valid without a model", () => {
+    const s = fallbackSpec({ sentence: `Watch ${ORBIO_CA} and tell me when whales move`, template: "market-watch" });
+    expect(JobSpec.safeParse(s).success).toBe(true);
+    expect(s.sources).toContain(ORBIO_CA);
+    expect(s.output.alwaysReport).toBe(false);
+  });
+});
+
+describe("runner", () => {
+  it("1. real run: takes the signed key, runs the job, returns valid hashed output under cap", async () => {
+    const orbio = fakeOrbio({ realKey: KEY });
+    const r = await runIntern({ id: "m_t1", owner: OWNER, bag: 1_250_000, spec: marketWatch, delivery: {}, key: null }, { orbio: orbio.client });
+    console.log("run1:", r.status, r.error, "cost", r.costUsd, "calls", r.modelCalls, "ms", r.durationMs, "\n", r.output?.title, "\n", r.output?.summary);
+    expect(r.status).toBe("done");
+    expect(r.output?.title.length).toBeGreaterThan(2);
+    expect(r.outputHash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(r.keyEvents.map((e) => e.kind)).toContain("claimed");
+    expect(orbio.state.calls).toEqual(expect.arrayContaining(["balance", "create"]));
+    expect(r.costUsd).toBeLessThan(r.plan.perRunCapUsd * 4);
+    expect(r.trace.map((t) => t.tool)).not.toContain("spawn_intern");
+  });
+
+  it("2. cost cap stops a greedy job and still yields output", async () => {
+    const orbio = fakeOrbio({ realKey: KEY });
+    const greedy: Spec = {
+      ...marketWatch,
+      objective: "Compare ORBIO against every other token on Robinhood Chain one by one, fetching holders, transfers and market data for each, exhaustively.",
+      spendCapUsd: 0.012,
+    };
+    const r = await runIntern({ id: "m_t2", owner: OWNER, bag: 1_250_000, spec: greedy, delivery: {}, key: null }, { orbio: orbio.client });
+    console.log("run2:", r.status, r.error, "cap", r.plan.perRunCapUsd, "cost", r.costUsd, "calls", r.modelCalls);
+    expect(r.plan.perRunCapUsd).toBe(0.012);
+    expect(["done", "failed"]).toContain(r.status);
+    expect(r.costUsd).toBeLessThan(0.012 * 4);
+    if (r.status === "done") expect(r.output).toBeDefined();
+  });
+
+  it("3. the gateway does not know the signed key yet → quiet, ledger zeroed, nothing re-minted", async () => {
+    const orbio = fakeOrbio({ realKey: KEY, unknownKey: true });
+    const r = await runIntern({ id: "m_t3", owner: OWNER, bag: 1_250_000, spec: marketWatch, delivery: {}, key: null }, { orbio: orbio.client });
+    console.log("run3:", r.status, r.error, r.keyEvents);
+    expect(r.status).toBe("quiet");
+    expect(r.keyEvents.map((e) => e.kind)).not.toContain("rotated");
+    expect(orbio.state.exhausted).toBe(1);
+    expect(r.keyEvents.at(-1)?.detail).toMatch(/recognise/);
+  });
+
+  it("4. no activated balance → quiet, zero spend, no model calls", async () => {
+    const orbio = fakeOrbio({ realKey: KEY, balanceUsd: 0 });
+    const r = await runIntern({ id: "m_t4", owner: OWNER, bag: 800, spec: marketWatch, delivery: {}, key: null }, { orbio: orbio.client });
+    expect(r.status).toBe("quiet");
+    expect(r.costUsd).toBe(0);
+    expect(r.modelCalls).toBe(0);
+    expect(orbio.state.calls).toEqual(["balance"]);
+    expect(r.keyEvents[0].detail).toMatch(/AI balance can't fund a run/);
+  });
+
+  it("5. tools returning garbage → run still completes with honest output", async () => {
+    const orbio = fakeOrbio({ realKey: KEY });
+    const real = fetch;
+    // break only the data tools, not the model endpoint
+    const broken: typeof fetch = async (input, init) => (/orbio\.so\/api\/v1|openrouter\.ai/.test(String(input)) ? real(input, init) : new Response("<html>502</html>", { status: 502 }));
+    const r = await runIntern({ id: "m_t5", owner: OWNER, bag: 1_250_000, spec: marketWatch, delivery: {}, key: null }, { orbio: orbio.client, fetch: broken });
+    console.log("run5:", r.status, r.error, "\n", r.output?.summary);
+    expect(r.status).toBe("done");
+    expect(r.output).toBeDefined();
+  });
+
+  it("8. 'summarise my repository intern' with GitHub connected → resolves the repo itself and reports", async () => {
+    const gh = process.env.GITHUB_TOKEN;
+    if (!gh) return;
+    const orbio = fakeOrbio({ realKey: KEY });
+    const spec: Spec = { ...marketWatch, name: "Micheal", template: "repo-mechanic", objective: "Give me a summarization on what my repository intern is about", sources: [], tools: ["github_read", "web_fetch", "deliver"], output: { kind: "digest", maxWords: 220, alwaysReport: false }, spendCapUsd: 0.05, model: "openai/gpt-5.6-terra" };
+    const login = ((await (await fetch("https://api.github.com/user", { headers: { authorization: `Bearer ${gh}` } })).json()) as { login: string }).login;
+    const r = await runIntern({ id: "m_t8", owner: OWNER, bag: 1_250_000, spec, delivery: {}, key: null, connections: { github: { token: gh, login } } }, { orbio: orbio.client });
+    console.log("run8:", r.status, r.error, "\n", r.output?.title, "\n", r.output?.summary, "\n", r.trace.map((t) => t.summary));
+    expect(r.status).toBe("done");
+    expect(r.trace.some((t) => /^repos/.test(t.summary))).toBe(true);
+    expect(r.output?.nothingHappened).toBe(false);
+    expect(r.output?.summary.toLowerCase()).toMatch(/intern|orbio|agent/);
+  });
+
+  it("9. a job that calls for a separate watcher → the intern proposes a child (once) and says it awaits approval", async () => {
+    process.env.DATABASE_URL = "file:/tmp/intern-runtime.db";
+    process.env.SECRET_KEY = "test";
+    const store = await import("@/intern/store");
+    const orbio = fakeOrbio({ realKey: KEY });
+    const spec: Spec = {
+      ...marketWatch,
+      name: "Scout",
+      objective: `Find the single largest recent $ORBIO (${ORBIO_CA}) transfer on Robinhood Chain and set up a separate intern that watches that wallet's ORBIO moves from now on. Report the wallet, the amount, and that the watcher awaits my approval.`,
+      spendCapUsd: 0.05,
+      model: "openai/gpt-5.6-terra",
+    };
+    const r = await runIntern({ id: "m_t9", owner: OWNER, bag: 1_250_000, spec, delivery: {}, key: null, runId: null }, { orbio: orbio.client });
+    console.log("run9:", r.status, r.error, "\n", r.output?.title, "\n", r.output?.summary, "\n", r.trace.map((t) => `${t.tool}: ${t.summary}`));
+    expect(r.status).toBe("done");
+    const spawns = r.trace.filter((t) => t.tool === "spawn_intern");
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0].summary).toMatch(/^pending · p_/);
+    const pending = await store.listProposals(OWNER, "pending");
+    expect(pending.some((p) => p.kind === "spawn_intern" && p.internId === "m_t9")).toBe(true);
+    const payload = pending.find((p) => p.kind === "spawn_intern")!.payload as { spec: Spec; reason: string };
+    expect(payload.spec.sources.join(" ")).toMatch(/0x[0-9a-fA-F]{40}/);
+    expect(payload.reason.length).toBeGreaterThan(8);
+    expect(r.output?.summary.toLowerCase()).toMatch(/approv|awaiting|pending/);
+  }, 180_000);
+
+  it("10. 'send it as a PDF' → the run writes one file, the summary names it, the report is not duplicated", async () => {
+    process.env.DATABASE_URL = "file:/tmp/intern-runtime.db";
+    process.env.SECRET_KEY = "test";
+    const orbio = fakeOrbio({ realKey: KEY });
+    const files: Array<{ name: string; mime: string; size: number; caption: string }> = [];
+    const spec: Spec = { ...marketWatch, name: "Quill", objective: `Brief me on $ORBIO (${ORBIO_CA}) on Robinhood Chain: price, liquidity and volume right now, and send me the brief as a PDF.`, spendCapUsd: 0.05 };
+    const r = await runIntern({ id: "m_t10", owner: OWNER, bag: 1_250_000, spec, delivery: {}, key: null }, {
+      orbio: orbio.client,
+      files: async (f) => {
+        files.push({ name: f.name, mime: f.mime, size: f.bytes.byteLength, caption: f.caption });
+        return { ok: true, id: "f_1", sentTo: ["intern page", "telegram"] };
+      },
+    });
+    console.log("run10:", r.status, r.error, "\n", r.output?.title, "\n", r.output?.summary, "\n", files, "\n", r.trace.map((t) => `${t.tool}: ${t.summary}`));
+    expect(r.status).toBe("done");
+    expect(files).toHaveLength(1);
+    expect(files[0].mime).toBe("application/pdf");
+    expect(files[0].size).toBeGreaterThan(800);
+    expect(files[0].name).toMatch(/\.pdf$/);
+    expect(r.trace.filter((t) => t.tool === "write_document")).toHaveLength(1);
+    expect(r.output?.summary.toLowerCase()).toMatch(/pdf|file|attached|document/);
+  }, 180_000);
+
+  it("delivery tool refuses channels the owner didn't configure, and uses the sink when they did", async () => {
+    const orbio = fakeOrbio({ realKey: KEY });
+    const sent: string[] = [];
+    const alertSpec: Spec = { ...marketWatch, output: { kind: "alert", maxWords: 60, alwaysReport: true }, objective: "Send the owner a one-line Telegram hello with the current $ORBIO price, then finish." };
+    const r = await runIntern(
+      { id: "m_t7", owner: OWNER, bag: 1_250_000, spec: alertSpec, delivery: { telegram: "@dara" }, key: null },
+      { orbio: orbio.client, deliver: async ({ channel, text }) => { sent.push(`${channel}:${text}`); return { ok: true, id: "1" }; } },
+    );
+    console.log("run7:", r.status, sent);
+    expect(r.status).toBe("done");
+    expect(sent.length).toBeGreaterThanOrEqual(1);
+    expect(sent[0].startsWith("telegram:")).toBe(true);
+  });
+});
+
+describe("budget", () => {
+  it("keeps the owner's cadence and cap; only the holder floor makes it quiet", () => {
+    const p = plan({ ...marketWatch, cadence: "15m" }, 5_000);
+    expect(p.quiet).toBe(false);
+    expect(p.cadence).toBe("15m");
+    expect(p.perRunCapUsd).toBe(marketWatch.spendCapUsd);
+    expect(plan(marketWatch, 999).quiet).toBe(true);
+    expect(plan({ ...marketWatch, template: "repo-mechanic" }, 1_000).cadence).toBe(marketWatch.cadence);
+  });
+});
+
+describe("anchor", () => {
+  it("encodes a decodable payload", () => {
+    const hash = `0x${"ab".repeat(32)}` as const;
+    const data = encodeAnchor({ internId: "m_x", runId: "run_y", outputHash: hash, costUsd: 0.0123, at: 1_700_000_000_000 });
+    const [mid, rid, h, cost, at] = decodeAbiParameters(
+      [{ type: "string" }, { type: "string" }, { type: "bytes32" }, { type: "uint64" }, { type: "uint64" }],
+      data,
+    );
+    expect([mid, rid, h]).toEqual(["m_x", "run_y", hash]);
+    expect(Number(cost)).toBe(12300);
+    expect(Number(at)).toBe(1_700_000_000);
+    expect(ANCHOR_TO).toMatch(/^0x[0-9a-f]{40}$/);
+  });
+});

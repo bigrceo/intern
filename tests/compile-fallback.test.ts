@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { extractSources, fallbackSpec } from "@/intern/compile";
+import { JobSpec } from "@/intern/spec";
+
+describe("fallbackSpec", () => {
+  it("treats a liquidity ping as an alert and keeps $ORBIO", () => {
+    const s = fallbackSpec({ sentence: "Ping me if $ORBIO liquidity moves 10%.", template: "market-watch" });
+    expect(JobSpec.safeParse(s).success).toBe(true);
+    expect(s.output.alwaysReport).toBe(false);
+    // A named number gets a free tripwire, so the model run becomes a daily heartbeat.
+    expect(s.tripwire).toEqual({ metric: "liquidity", target: "ORBIO", thresholdPct: 10 });
+    expect(s.cadence).toBe("24h");
+    expect(s.sources).toContain("$ORBIO");
+  });
+
+  it("reads 'every morning' as daily and names Robinhood Chain", () => {
+    const s = fallbackSpec({
+      sentence: "Every morning, tell me what moved on Robinhood Chain and why.",
+      template: "custom",
+    });
+    expect(s.cadence).toBe("24h");
+    expect(s.sources).toContain("Robinhood Chain");
+  });
+
+  it("pulls a repo slug out of a watch sentence", () => {
+    const s = fallbackSpec({
+      sentence: "Nightly: what changed in acme/app issues and commits.",
+      template: "repo-mechanic",
+    });
+    expect(s.sources).toContain("acme/app");
+    expect(s.cadence).toBe("24h");
+    expect(s.output.kind).toBe("digest");
+  });
+});
+
+describe("extractSources", () => {
+  it("adds $ORBIO when the word is bare", () => {
+    expect(extractSources("Watch ORBIO whales")).toContain("$ORBIO");
+  });
+});

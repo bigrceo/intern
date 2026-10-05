@@ -1,0 +1,142 @@
+"use client";
+
+import { LightMarkdown } from "@/components/light-markdown";
+import { useState } from "react";
+import { ChevronDown, ChevronUp, FileText, Hash, ShieldCheck } from "lucide-react";
+import { fmtUsd, shortenHexes, timeAgo, type ApiRun } from "@/lib/api";
+
+/** A two-word label for a check the model did not label: the first meaningful words before any punctuation. */
+export const labelFor = (check: string, label?: string) => (label?.trim() || check.replace(/[:;,(].*$/, "").split(/\s+/).filter((w) => !/^(the|a|an|and|of|on|in|vs|for|with|to|how|it|its)$/i.test(w)).slice(0, 3).join(" ")).slice(0, 24);
+
+export function MetricsStrip({ metrics, size = "md" }: { metrics: NonNullable<ApiRun["metrics"]>; size?: "sm" | "md" }) {
+  if (!metrics.length) return null;
+  return (
+    <dl className={`grid gap-2 ${metrics.length >= 4 ? "grid-cols-2 sm:grid-cols-4" : `grid-cols-${metrics.length}`}`}>
+      {metrics.slice(0, 4).map((m, i) => (
+        <div key={i} className="rounded-[10px] bg-mint-2 px-3 py-2">
+          <dt className="truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">{m.label}</dt>
+          <dd className={`mt-0.5 flex items-baseline gap-1.5 ${size === "sm" ? "text-[15px]" : "text-[18px]"} font-medium leading-none tracking-[-0.02em] text-ink tabular-nums`}>
+            {m.value}
+            {m.delta && <span className={`text-[11px] font-medium ${m.tone === "up" ? "text-moss" : m.tone === "down" ? "text-red-700" : "text-ink-faint"}`}>{m.delta}</span>}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function RunCard({ run, anchoring = true }: { run: ApiRun; anchoring?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const tone = run.status === "failed" ? "border-red-700/30" : run.status === "quiet" ? "border-ink/10 opacity-80" : "border-ink/10";
+  const hasBody = run.body.trim().length > 0;
+  return (
+    <article className={`rounded-card border bg-white p-5 shadow-[var(--shadow-soft)] transition-[box-shadow,border-color] hover:shadow-[var(--shadow-card)] ${tone}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <time className="text-[11.5px] text-ink-faint" dateTime={new Date(run.at).toISOString()}>{timeAgo(run.at)}</time>
+            {run.signal === "high" && <span className="rounded-chip bg-mint px-2 py-0.5 text-[10.5px] font-medium text-pine">high signal</span>}
+            {run.nothingHappened && run.status === "done" && <span className="rounded-chip bg-bg-2 px-2 py-0.5 text-[10.5px] font-medium text-muted">nothing new</span>}
+            {run.status === "failed" && <span className="rounded-chip bg-red-soft px-2 py-0.5 text-[10.5px] font-medium text-red">failed</span>}
+          </div>
+          <h4 className="mt-1.5 text-[17px] font-medium leading-[1.3] tracking-[-0.02em] text-ink [overflow-wrap:anywhere]" title={run.title}>{shortenHexes(run.title)}</h4>
+          <p className={`mt-1.5 text-[13.5px] leading-[1.6] text-ink-soft [overflow-wrap:anywhere] ${open ? "" : "line-clamp-3"}`}>{shortenHexes(run.summary)}</p>
+          {(run.metrics?.length ?? 0) > 0 && <div className="mt-3"><MetricsStrip metrics={run.metrics!} size="sm" /></div>}
+          {(run.sections?.length ?? 0) > 0 && (
+            <ul className="mt-3 divide-y divide-line-soft rounded-[12px] ring-1 ring-line">
+              {run.sections!.slice(0, 6).map((sec, i) => (
+                <li key={i} className="grid grid-cols-[6.5rem_1fr] gap-x-3 px-3 py-2 text-[13px] leading-[1.5] [overflow-wrap:anywhere] sm:grid-cols-[8rem_1fr]" title={sec.check}>
+                  <span className="flex items-start gap-1.5 font-medium text-ink"><span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${sec.changed ? "bg-gold" : "bg-ink/20"}`} title={sec.changed ? "changed since last run" : "unchanged"} /><span className="min-w-0 truncate">{labelFor(sec.check, sec.label)}</span></span>
+                  <span className={`min-w-0 text-ink-soft ${open ? "" : "line-clamp-3"}`}>{shortenHexes(sec.finding)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {(run.files?.length ?? 0) > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {run.files!.map((f) => (
+                <li key={f.id}>
+                  <a href={f.url} download={f.name} className="inline-flex items-center gap-1.5 rounded-md border border-ink/12 bg-paper px-2.5 py-1 text-[12px] text-ink hover:border-ink/30" title={`${f.mime} · ${(f.size / 1024).toFixed(0)} KB`}>
+                    <FileText size={12} strokeWidth={1.75} /> {f.name}
+                    <span className="text-ink-faint">{(f.size / 1024).toFixed(0)} KB</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {open && hasBody && <LightMarkdown text={run.body} className="mt-3 rounded-md bg-paper p-3 text-[13px] leading-[1.6] text-ink" />}
+          {open && (run.trace?.length ?? 0) > 0 && (
+            <ol className="mt-3 space-y-1 rounded-md border border-ink/[0.07] bg-paper/60 p-3 font-mono text-[11.5px]">
+              <li className="mb-1.5 text-[10.5px] uppercase tracking-[0.14em] text-ink-soft">Steps · {run.trace!.length} tool calls</li>
+              {run.trace!.map((t, i) => (
+                <li key={i} className="grid grid-cols-[3rem_auto_1fr] items-baseline gap-x-2">
+                  <span className="text-ink-faint">{(t.at / 1000).toFixed(1)}s</span>
+                  <span className="text-ink">{t.tool}</span>
+                  <span className="truncate text-ink-soft" title={t.summary}>{shortenHexes(t.summary)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {open && run.sources.length > 0 && (
+            <ul className="mt-2 space-y-0.5 font-mono text-[11.5px]">
+              {run.sources.map((s) => (
+                <li key={s} className="truncate">
+                  <a href={s} target="_blank" rel="noreferrer" className="text-ink-soft underline decoration-ink/20 hover:text-ink">{s}</a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {((run.scored?.length ?? 0) > 0 || (run.calls?.length ?? 0) > 0) && (
+            <ul className="mt-3 space-y-1.5" title="Calls are made by the intern and graded by the intern on its next run against the data it reads; they are its own assessment.">
+              {run.scored?.map((s, i) => (
+                <li key={`s${i}`} className="flex items-start gap-2 text-[12.5px] leading-[1.5]">
+                  <span className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ${s.result === "hit" ? "bg-moss/15 text-moss" : s.result === "miss" ? "bg-red-700/10 text-red-800" : "bg-ink/5 text-ink-soft"}`}>{s.result}</span>
+                  <span className="min-w-0 break-words text-ink"><span className="text-ink-soft">called: </span>{s.claim}{s.evidence ? <span className="text-ink-soft"> · {s.evidence}</span> : null}<span className="text-ink-faint"> · self-graded</span></span>
+                </li>
+              ))}
+              {run.calls?.map((c, i) => (
+                <li key={`c${i}`} className="flex items-start gap-2 text-[12.5px] leading-[1.5]">
+                  <span className="mt-0.5 shrink-0 rounded-full bg-gold/25 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink">calls it</span>
+                  <span className="min-w-0 break-words text-ink">{c.claim}<span className="text-ink-faint"> · scored next run</span></span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {run.keyEvents.filter((e) => e.kind === "tripwire").map((e, i) => (
+            <p key={i} className="mt-2 rounded-md border border-moss/40 bg-moss/10 px-2.5 py-1.5 font-mono text-[11.5px] text-ink">⚡ {e.detail}</p>
+          ))}
+          {run.keyEvents.some((e) => e.kind === "budget") && (
+            <p className="mt-2 rounded-md border border-gold bg-gold/10 px-2.5 py-1.5 font-mono text-[11.5px] text-ink">⚠ Cut short by the spend cap: the report covers what it managed. Raise the cap under Edit job, or choose a cheaper model.</p>
+          )}
+          {open && run.keyEvents.length > 0 && (
+            <ul className="mt-2 space-y-0.5 font-mono text-[11.5px] text-ink-soft">
+              {run.keyEvents.map((e, i) => (
+                <li key={i}>⟳ {e.kind.replace("_", " ")}: {e.detail}{e.amountUsd ? ` (${fmtUsd(e.amountUsd)})` : ""}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-ink/[0.06] pt-3 text-[12px] text-ink-soft">
+        {(hasBody || run.sources.length > 0 || run.keyEvents.length > 0 || (run.trace?.length ?? 0) > 0) && (
+          <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 font-medium text-ink hover:text-ink-soft">
+            {open ? <><ChevronUp size={13} strokeWidth={2} /> Collapse</> : <><ChevronDown size={13} strokeWidth={2} /> {hasBody ? "Read the report" : "Details"}</>}
+          </button>
+        )}
+        <span className="font-mono text-[11.5px] tabular-nums">{run.costUsd === 0 ? "no spend" : fmtUsd(run.costUsd, 4)}</span>
+        {run.model !== "-" && <span className="hidden text-ink-faint sm:inline">{run.model.split("/").pop()}</span>}
+        <span className="hidden font-mono text-[11.5px] tabular-nums text-ink-faint sm:inline">{(run.durationMs / 1000).toFixed(1)}s</span>
+        {run.txHash ? (
+          <a href={run.explorerUrl ?? "#"} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 font-medium text-moss hover:underline" title={`output hash ${run.outputHash}`}>
+            <ShieldCheck size={13} strokeWidth={2} /> anchored on chain
+          </a>
+        ) : run.outputHash ? (
+          <span className="ml-auto inline-flex items-center gap-1 text-ink-faint" title={run.outputHash}><Hash size={12} strokeWidth={2} /> {anchoring ? "anchoring…" : "hashed"}</span>
+        ) : (
+          <span className="ml-auto text-ink-faint">{run.status}</span>
+        )}
+      </div>
+    </article>
+  );
+}

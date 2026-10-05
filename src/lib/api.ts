@@ -1,0 +1,218 @@
+import type { JobSpec } from "@/intern/spec";
+import type { Plan } from "@/intern/budget";
+
+/** Thin client for the Intern API. The owner header is set from useAuth(). */
+
+export type ApiIntern = {
+  id: string;
+  owner: string;
+  name: string;
+  spec: JobSpec;
+  status: "running" | "idle" | "paused" | "quiet" | "deleted";
+  delivery: { telegram?: string; x?: string };
+  autopilot: boolean;
+  cadence: string;
+  perRunCapUsd: number;
+  earnPerDayUsd: number;
+  burnPerDayUsd: number;
+  keyLimitUsd: number;
+  keySpentUsd: number;
+  keyRemainingUsd: number;
+  nextRunAt: number;
+  lastRunAt: number | null;
+  createdAt: number;
+  parentId: string | null;
+  keysRotated: number;
+  runsTotal: number;
+  runsFailed: number;
+  spentTotalUsd: number;
+  openCalls: Array<{ claim: string; check: string; madeAt: number; runId: string | null }>;
+  avatar: number;
+  hits: number;
+  misses: number;
+};
+
+export type ApiFile = { id: string; name: string; mime: string; size: number; createdAt: number; runId: string | null; runTitle: string | null; url: string };
+
+export type ApiRun = {
+  id: string;
+  internId: string;
+  at: number;
+  status: "done" | "quiet" | "failed";
+  title: string;
+  summary: string;
+  body: string;
+  sources: string[];
+  signal: string;
+  nothingHappened: boolean;
+  costUsd: number;
+  model: string;
+  modelCalls: number;
+  durationMs: number;
+  outputHash: string | null;
+  txHash: string | null;
+  explorerUrl: string | null;
+  keyEvents: Array<{ kind: string; detail: string; amountUsd?: number }>;
+  trace?: Array<{ at: number; tool: string; summary: string }>;
+  sections?: Array<{ check: string; label?: string; finding: string; changed: boolean }>;
+  metrics?: Array<{ label: string; value: string; delta?: string; tone?: "up" | "down" | "flat" }>;
+  calls?: Array<{ claim: string; check: string }>;
+  scored?: Array<{ claim: string; result: "hit" | "miss" | "void"; evidence: string }>;
+  error: string | null;
+  files?: Array<{ id: string; name: string; mime: string; size: number; url: string }>;
+};
+
+export type ConnectionKind = "telegram" | "github" | "x" | "discord" | "gmail";
+export type Connections = {
+  connections: Array<{ kind: ConnectionKind; label: string; createdAt: number }>;
+  available: { telegram: boolean; telegramBot: string | null; github: boolean; githubOAuth: boolean; x: boolean; discord: boolean; gmailOAuth: boolean };
+};
+export type ApiAction = {
+  id: string;
+  kind: Proposal["kind"];
+  status: "executed" | "failed" | "uncertain";
+  at: number;
+  runId: string | null;
+  title: string;
+  body: string;
+  url: string | null;
+  error: string | null;
+  verification: { status: "verified" | "mismatch" | "unchecked"; scope: "complete" | "sample"; at: number; reason?: string; checks: Array<{ field: string; expected: string; actual: string; ok: boolean }> } | null;
+};
+
+export type Proposal = {
+  id: string;
+  internId: string;
+  kind: "tweet" | "pull_request" | "issue_comment" | "spawn_intern" | "email_send" | "email_organize" | "email_forward" | "issue_create" | "activate_credit";
+  status: "pending" | "approved" | "executing" | "rejected" | "executed" | "failed" | "uncertain";
+  title: string;
+  body: string;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  createdAt: number;
+  decidedAt: number | null;
+};
+
+export type OrbioActivation = { txHash: string; activationId: string; from: string; amountUsd: number; blockNumber: number; proposalId: string | null; at: number };
+export type OrbioStatus = {
+  approved: boolean;
+  avatar: number;
+  bag: number;
+  staked: number;
+  earnPerDayUsd: number;
+  /** Activated AI balance: from the gateway when it answers, else Intern's ledger. */
+  idleCreditsUsd: number;
+  balanceSource: "gateway" | "ledger";
+  /** CREDIT tokens in the wallet, not yet activated. */
+  creditTokensUsd: number | null;
+  canWrite: boolean;
+  orbio: { epoch: number; signedAt: number | null; message: string; dev: boolean; activations: OrbioActivation[]; activationCard: { id: string; amountUsd: number; status: string } | null };
+};
+
+export type ApiThread = { id: string; title: string; model: string; effort: "low" | "medium" | "high" | "xhigh" | "max"; machine: "standard" | "large"; status: "idle" | "working" | "stopping" | "failed"; spentUsd: number; createdAt: number; updatedAt: number };
+export type ApiThreadMessage = { id: string; role: "user" | "intern"; text: string; files: string[]; model: string | null; ms: number | null; costUsd: number | null; createdAt: number };
+export type ApiThreadStep = { id: string; tool: string; summary: string; detail: string | null; shot: string | null; ok: boolean; ms: number | null; createdAt: number };
+export type UploadFile = { name: string; b64: string };
+type ThreadSettings = { model?: string; effort?: string; machine?: string };
+
+async function req<T>(owner: string | null, path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { "content-type": "application/json", ...(owner ? { "x-owner": owner } : {}), ...(init?.headers ?? {}) },
+  });
+  const json = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (res.status === 401 && owner && typeof window !== "undefined") {
+    // Session cookie gone (expired or another device signed out): drop the local login and re-sign.
+    window.dispatchEvent(new Event("intern:unauthorized"));
+  }
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json;
+}
+
+const statusInflight = new Map<string, Promise<OrbioStatus>>();
+
+export const api = {
+  threads: (owner: string) => req<{ threads: ApiThread[] }>(owner, "/api/threads"),
+  thread: (owner: string, id: string) => req<{ thread: ApiThread; messages: ApiThreadMessage[]; steps: ApiThreadStep[] }>(owner, `/api/threads/${id}`),
+  newThread: (owner: string, text: string, s: ThreadSettings, files: UploadFile[] = []) => req<{ id: string }>(owner, "/api/threads", { method: "POST", body: JSON.stringify({ text, ...s, files }) }),
+  sendToThread: (owner: string, id: string, text: string, s: ThreadSettings, files: UploadFile[] = []) => req<{ started?: boolean; queued?: boolean }>(owner, `/api/threads/${id}/messages`, { method: "POST", body: JSON.stringify({ text, ...s, files }) }),
+  renameThread: (owner: string, id: string, title: string) => req<{ ok: boolean }>(owner, `/api/threads/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  retitleThread: (owner: string, id: string) => req<{ title: string }>(owner, `/api/threads/${id}/title`, { method: "POST" }),
+  stopThread: (owner: string, id: string) => req<{ ok: boolean }>(owner, `/api/threads/${id}/stop`, { method: "POST" }),
+  deleteThread: (owner: string, id: string) => req<{ deleted: boolean }>(owner, `/api/threads/${id}`, { method: "DELETE" }),
+  threadComputer: (owner: string, id: string) => req<{ status: string; cpu?: string; mem?: string; disk_bytes?: number; created_at?: string; started_at?: string }>(owner, `/api/threads/${id}/computer`),
+  threadFiles: (owner: string, id: string) => req<{ entries: Array<{ name: string; dir: boolean; size: number }> }>(owner, `/api/threads/${id}/files`),
+  orbioStatus: (owner: string) => {
+    const hit = statusInflight.get(owner);
+    if (hit) return hit;
+    const p = req<OrbioStatus>(owner, "/api/orbio/status").finally(() => setTimeout(() => statusInflight.delete(owner), 1500));
+    statusInflight.set(owner, p);
+    return p;
+  },
+  orbioDisconnect: (owner: string) => req<{ ok: boolean }>(owner, "/api/orbio/status", { method: "DELETE" }),
+  orbioSignKey: (owner: string, signature: string, epoch: number) => req<{ ok: boolean; epoch: number }>(owner, "/api/orbio/key", { method: "POST", body: JSON.stringify({ signature, epoch }) }),
+  orbioActivate: async (owner: string, txHash: string, proposalId: string | null) => {
+    const r = await fetch("/api/orbio/activate", { method: "POST", headers: { "content-type": "application/json", "x-owner": owner }, body: JSON.stringify({ txHash, proposalId }), credentials: "include" });
+    const j = (await r.json().catch(() => ({}))) as { ok: boolean; error?: string; credited?: number; total?: number };
+    if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+    return { ...j, pending: r.status === 202 };
+  },
+  listInterns: (owner: string) => req<{ interns: ApiIntern[] }>(owner, "/api/interns"),
+  getIntern: (id: string) => req<{ intern: ApiIntern }>(null, `/api/interns/${id}`),
+  runs: (id: string) => req<{ runs: ApiRun[]; anchoring?: boolean }>(null, `/api/interns/${id}/runs`),
+  files: (owner: string, id: string) => req<{ files: ApiFile[] }>(owner, `/api/interns/${id}/files`),
+  compile: (owner: string, body: { sentence: string; template: JobSpec["template"]; name?: string }) =>
+    req<{ spec: JobSpec; compiled: boolean }>(owner, "/api/interns/compile", { method: "POST", body: JSON.stringify(body) }),
+  launch: (owner: string, body: { spec: JobSpec; delivery: { telegram?: string; x?: string }; autopilot?: boolean; runNow?: boolean }) =>
+    req<{ intern: ApiIntern; plan: Plan; firstRunStarted: boolean }>(owner, "/api/interns", { method: "POST", body: JSON.stringify(body) }),
+  patch: (owner: string, id: string, body: { action: "pause" | "resume" | "rotate_key" | "edit"; spec?: JobSpec; delivery?: { telegram?: string; x?: string }; autopilot?: boolean }) =>
+    req<{ intern: ApiIntern }>(owner, `/api/interns/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (owner: string, id: string) => req<{ ok: boolean; returnedUsd: number }>(owner, `/api/interns/${id}`, { method: "DELETE" }),
+  runNow: (owner: string, id: string) => req<{ status: string; error?: string; runId?: string }>(owner, `/api/interns/${id}/run`, { method: "POST" }),
+  connections: (owner: string) => req<Connections>(owner, "/api/connections"),
+  disconnect: (owner: string, kind: ConnectionKind) => req<{ ok: boolean }>(owner, "/api/connections", { method: "DELETE", body: JSON.stringify({ kind }) }),
+  telegramLink: (owner: string) => req<{ code: string; url: string | null }>(owner, "/api/connections/telegram", { method: "POST" }),
+  telegramPoll: (owner: string) => req<{ linked: boolean; label: string | null }>(owner, "/api/connections/telegram"),
+  githubStart: (owner: string, redirectTo = "/app/connections") => req<{ url: string }>(owner, "/api/connections/github/start", { method: "POST", body: JSON.stringify({ origin: typeof window !== "undefined" ? window.location.origin : undefined, redirectTo }) }),
+  githubConnect: (owner: string, token: string) => req<{ ok: boolean; login: string }>(owner, "/api/connections/github", { method: "POST", body: JSON.stringify({ token }) }),
+  gmailStart: (owner: string, redirectTo?: string) => req<{ url: string }>(owner, "/api/connections/gmail/start", { method: "POST", body: JSON.stringify({ origin: typeof window !== "undefined" ? window.location.origin : undefined, redirectTo }) }),
+  discordConnect: (owner: string, webhookUrl: string) => req<{ ok: boolean; label: string }>(owner, "/api/connections/discord", { method: "POST", body: JSON.stringify({ webhookUrl }) }),
+  xConnect: (owner: string, keys: { apiKey: string; apiSecret: string; accessToken: string; accessSecret: string }) => req<{ ok: boolean; username: string }>(owner, "/api/connections/x", { method: "POST", body: JSON.stringify(keys) }),
+  asks: (owner: string, id: string) => req<{ asks: Array<{ q: string; a: string; runId?: string; at: number }> }>(owner, `/api/interns/${id}/ask`),
+  transcribe: async (owner: string, id: string, blob: Blob) => {
+    const r = await fetch(`/api/interns/${id}/transcribe`, { method: "POST", headers: { "content-type": blob.type || "audio/webm", "x-owner": owner }, body: blob, credentials: "include" });
+    const j = (await r.json().catch(() => ({}))) as { text?: string; costUsd?: number; error?: string };
+    if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+    return j as { text: string; costUsd: number };
+  },
+  ask: (owner: string, id: string, text: string, runId?: string, history?: Array<{ q: string; a: string }>) => req<{ reply: string }>(owner, `/api/interns/${id}/ask`, { method: "POST", body: JSON.stringify({ text, runId, history }) }),
+  actions: (id: string) => req<{ actions: ApiAction[] }>(null, `/api/interns/${id}/actions`),
+  proposals: (owner: string, status?: Proposal["status"]) => req<{ proposals: Proposal[] }>(owner, `/api/proposals${status ? `?status=${status}` : ""}`),
+  decide: (owner: string, id: string, action: "approve" | "reject") => req<{ ok: boolean; status: string; result?: Record<string, unknown>; autopilotOn?: boolean }>(owner, `/api/proposals/${id}`, { method: "POST", body: JSON.stringify({ action }) }),
+  sky: () => req<{ alive: number; total: number; creditsPerDay: number; burnPerDay: number; spentTotalUsd: number; runsToday: number; anchoredToday: number }>(null, "/api/sky/stats"),
+};
+
+export const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+/** Display only: full 0x addresses and tx hashes in prose become 0x8366…0951 (the stored/hashed text is untouched). */
+export const shortenHexes = (s: string) => s.replace(/0x[0-9a-fA-F]{40,64}/g, shortAddr);
+export const fmtUsd = (n: number, digits = 2) => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : n >= 100 && digits >= 2 ? `$${n.toFixed(0)}` : `$${n.toFixed(digits)}`);
+export const fmtBag = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n % 1_000_000 ? 2 : 0)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(n % 1_000 ? 1 : 0)}K` : String(Math.round(n)));
+export function timeAgo(ms: number) {
+  const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+export function timeUntil(ms: number) {
+  const s = Math.round((ms - Date.now()) / 1000);
+  if (s <= 0) return "now";
+  if (s < 60) return `in ${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `in ${h}h`;
+  return `in ${Math.round(h / 24)}d`;
+}

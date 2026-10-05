@@ -1,0 +1,289 @@
+import { beforeAll, describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import * as store from "@/intern/store";
+import * as gmail from "@/intern/connections/gmail";
+import { buildTools } from "@/intern/tools";
+import { decide } from "@/intern/proposals";
+import { runOne } from "@/intern/scheduler";
+import { buildInstructions } from "@/intern/personality";
+import type { JobSpec } from "@/intern/spec";
+import type { LocalTool } from "@/intern/llm";
+import { fakeGoogle } from "./fake-google";
+import { mdToHtml } from "@/intern/connections/telegram";
+
+const OWNER = "0x00000000000000000000000000000000000000f1";
+const call = <T = unknown>(t: LocalTool, a: unknown) => (t.execute as (a: unknown) => Promise<T>)(a);
+
+describe("gmail connection", () => {
+  beforeAll(async () => {
+    rmSync("/tmp/intern-gmail.db", { force: true });
+    process.env.DATABASE_URL = "file:/tmp/intern-gmail.db";
+    process.env.SECRET_KEY = "test";
+    process.env.GOOGLE_CLIENT_ID = "cid.apps.googleusercontent.com";
+    process.env.GOOGLE_CLIENT_SECRET = "csecret";
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    await store.migrate();
+  });
+
+  it("sign-in asks for offline gmail.modify; the callback stores the account sealed", async () => {
+    const g = fakeGoogle();
+    const url = new URL(await gmail.beginOAuth(OWNER, "https://intern.money/api/connections/gmail/callback", "/app/connections"));
+    expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+    expect(url.searchParams.get("scope")).toContain("gmail.modify");
+    expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("prompt")).toBe("consent");
+    const r = await gmail.finishOAuth("code123", url.searchParams.get("state")!, OWNER, g.fetchImpl);
+    expect(r).toMatchObject({ owner: OWNER, email: "micheal@gmail.com", redirectTo: "/app/connections" });
+    const conn = await store.getConnection<gmail.GmailConn>(OWNER, "gmail");
+    expect(conn?.label).toBe("micheal@gmail.com");
+    expect(conn?.data.refreshToken).toBe("1//refresh");
+    expect(g.log.find((l) => l.path === "/token")?.body).toMatchObject({ grant_type: "authorization_code", client_secret: "csecret" });
+  });
+
+  it("a consent without the Gmail box ticked is refused with advice", async () => {
+    const g = fakeGoogle();
+    const url = new URL(await gmail.beginOAuth("0x00000000000000000000000000000000000000f2", "https://intern.money/cb", "/app"));
+    await expect(gmail.finishOAuth("nogmail", url.searchParams.get("state")!, "0x00000000000000000000000000000000000000f2", g.fetchImpl)).rejects.toThrow(/Tick the Gmail box/);
+    expect(await store.getConnection("0x00000000000000000000000000000000000000f2", "gmail")).toBeNull();
+  });
+
+  it("expired access tokens refresh in place; a revoked grant is reported as such", async () => {
+    const g = fakeGoogle();
+    const c = (await store.getConnection<gmail.GmailConn>(OWNER, "gmail"))!;
+    await store.setConnection(OWNER, "gmail", c.label, { ...c.data, expiresAt: Date.now() - 1000 });
+    const t = await gmail.accessToken(OWNER, g.fetchImpl);
+    expect(t).toEqual({ token: "ya29.fresh", email: "micheal@gmail.com" });
+    expect((await store.getConnection<gmail.GmailConn>(OWNER, "gmail"))!.data.accessToken).toBe("ya29.fresh");
+    expect((await store.getConnection<gmail.GmailConn>(OWNER, "gmail"))!.data.expiresAt).toBeGreaterThan(Date.now() + 3_000_000);
+
+    const c2 = (await store.getConnection<gmail.GmailConn>(OWNER, "gmail"))!;
+    await store.setConnection(OWNER, "gmail", c2.label, { ...c2.data, expiresAt: Date.now() - 1000 });
+    await expect(gmail.accessToken(OWNER, fakeGoogle({ revoked: true }).fetchImpl)).rejects.toThrow(/^revoked$/);
+    await store.setConnection(OWNER, "gmail", c2.label, { ...c2.data, expiresAt: Date.now() + 3_600_000 });
+  });
+
+  it("reads: overview, search, a message (plain text preferred), an html-only mail stripped, attachments listed", async () => {
+    const g = fakeGoogle();
+    const o = await gmail.overview("ya29.x", g.fetchImpl);
+    expect(o.unreadInInbox).toBe(1);
+    expect(o.recent.map((m) => m.subject)).toEqual(["Demo slot", "Weekly digest"]);
+    expect(o.recent[0]).toMatchObject({ from: "Yash <yash@orbio.so>", unread: true, threadId: "t1" });
+    const m1 = await gmail.readMessage("ya29.x", "m1", g.fetchImpl);
+    expect(m1.body).toBe("Hey,\n\nCan you confirm Thursday works for the demo?\n\nYash");
+    expect(m1.messageIdHeader).toBe("<abc@mail.orbio.so>");
+    const m2 = await gmail.readMessage("ya29.x", "m2", g.fetchImpl);
+    expect(m2.body).toBe("Digest\nLine one & two\n\nThree");
+    expect(m2.attachments).toEqual([{ attachmentId: "att1", name: "digest.pdf", mime: "application/pdf", size: 1234 }]);
+    expect(m2.unsubscribe).toBe("https://substack.com/unsub/abc");
+    expect(await gmail.listDrafts("ya29.x", 5, g.fetchImpl)).toEqual({ drafts: [{ draftId: "d9", messageId: "m1", threadId: "t1", to: "micheal@gmail.com", subject: "Demo slot", snippet: "Can you confirm Thursday works for the demo?" }] });
+    const th = await gmail.readThread("ya29.x", "t1", g.fetchImpl);
+    expect(th.count).toBe(1);
+    expect(g.log.find((l) => l.path.endsWith("/messages") && l.method === "GET")).toBeTruthy();
+  });
+
+  it("outgoing mail is a valid RFC 5322 message: reply headers, utf-8 subject, base64 body", () => {
+    const raw = Buffer.from(gmail.buildRaw("micheal@gmail.com", { to: "yash@orbio.so", subject: "Re: Demo slot — yes", body: "Thursday works. See you then.\n", threadId: "t1", inReplyTo: "<abc@mail.orbio.so>" }), "base64url").toString("utf8");
+    const [head, body] = raw.split("\r\n\r\n");
+    expect(head).toContain("From: micheal@gmail.com\r\nTo: yash@orbio.so\r\n");
+    expect(head).toContain("Subject: =?UTF-8?B?");
+    expect(head).toContain("In-Reply-To: <abc@mail.orbio.so>\r\nReferences: <abc@mail.orbio.so>");
+    expect(Buffer.from(body.replace(/\r\n/g, ""), "base64").toString("utf8")).toBe("Thursday works. See you then.\n");
+    const plain = Buffer.from(gmail.buildRaw("a@b.co", { to: "c@d.co", subject: "Plain ascii", body: "x" }), "base64url").toString("utf8");
+    expect(plain).toContain("Subject: Plain ascii\r\n");
+    expect(plain).not.toContain("In-Reply-To");
+  });
+
+  it("gmail_read and gmail_draft work directly; gmail_send waits for approval, then sends in-thread", async () => {
+    const g = fakeGoogle();
+    const built = buildTools(["gmail_read", "gmail_draft", "gmail_send", "gmail_organize", "deliver"], {
+      fetch: g.fetchImpl,
+      delivery: {},
+      connections: { gmail: { owner: OWNER, email: "micheal@gmail.com" } },
+      propose: { owner: OWNER, internId: "m_inbox", internName: "Postie", runId: null, autopilot: false },
+    });
+    expect(built.tools.map((t) => t.name).sort()).toEqual(["deliver", "gmail_draft", "gmail_organize", "gmail_read", "gmail_send"]);
+    const read = built.tools.find((t) => t.name === "gmail_read")!;
+    const ov = await call<{ unreadInInbox: number; recent: unknown[] }>(read, { action: "overview" });
+    expect(ov.unreadInInbox).toBe(1);
+    const msg = await call<{ body: string }>(read, { action: "message", id: "m1" });
+    expect(msg.body).toContain("Thursday");
+
+    const draft = await call<{ drafted: boolean; draftId: string }>(built.tools.find((t) => t.name === "gmail_draft")!, { to: "yash@orbio.so", subject: "Re: Demo slot", body: "Thursday works.", threadId: "t1", inReplyTo: "<abc@mail.orbio.so>" });
+    expect(draft).toMatchObject({ drafted: true, draftId: "d1" });
+    const draftCall = g.log.find((l) => l.path.endsWith("/drafts"))!;
+    expect((draftCall.body!.message as { threadId: string }).threadId).toBe("t1");
+
+    const send = await call<{ proposed: boolean; proposalId: string }>(built.tools.find((t) => t.name === "gmail_send")!, { to: "yash@orbio.so", subject: "Re: Demo slot", body: "Thursday works. See you then.", threadId: "t1", inReplyTo: "<abc@mail.orbio.so>" });
+    expect(send.proposed).toBe(true);
+    expect(g.log.some((l) => l.path.endsWith("/messages/send"))).toBe(false);
+    const pending = await store.listProposals(OWNER, "pending");
+    expect(pending[0]).toMatchObject({ kind: "email_send", internId: "m_inbox" });
+
+    const d = await decide(send.proposalId, "approve", g.fetchImpl);
+    expect(d).toMatchObject({ ok: true, status: "executed" });
+    expect((d as unknown as { result: { messageId: string; threadId: string } }).result).toMatchObject({ messageId: "sent1", threadId: "t1" });
+    const sent = g.log.find((l) => l.path.endsWith("/messages/send"))!;
+    expect(Buffer.from(sent.body!.raw as string, "base64url").toString("utf8")).toContain("In-Reply-To: <abc@mail.orbio.so>");
+  });
+
+  it("gmail_organize on autopilot acts at once: archive removes INBOX, label creates the label when new", async () => {
+    const g = fakeGoogle();
+    const built = buildTools(["gmail_organize"], {
+      fetch: g.fetchImpl,
+      delivery: {},
+      connections: { gmail: { owner: OWNER, email: "micheal@gmail.com" } },
+      propose: { owner: OWNER, internId: "m_inbox", internName: "Postie", runId: null, autopilot: true },
+    });
+    const org = built.tools[0];
+    const a = await call<{ executed: boolean; result: { changed: number } }>(org, { messageIds: ["m2"], action: "archive", why: "Newsletter, read" });
+    expect(a).toMatchObject({ executed: true, result: { changed: 1, action: "archive" } });
+    expect(g.log.find((l) => l.path.endsWith("/batchModify"))!.body).toEqual({ ids: ["m2"], addLabelIds: [], removeLabelIds: ["INBOX"] });
+    const l = await call<{ executed: boolean }>(org, { messageIds: ["m1"], action: "label", label: "Orbio", why: "From the Orbio team" });
+    expect(l.executed).toBe(true);
+    expect(g.log.find((l) => l.path.endsWith("/labels") && l.method === "POST")!.body).toMatchObject({ name: "Orbio" });
+    const last = g.log.filter((l) => l.path.endsWith("/batchModify")).pop()!;
+    expect(last.body).toEqual({ ids: ["m1"], addLabelIds: ["Label_4"], removeLabelIds: [] });
+  });
+
+  it("bulk tidy by search: 'clear my spam' trashes everything in:spam; spam/untrash/important map to the right labels", async () => {
+    const g = fakeGoogle();
+    const r = await gmail.organize("ya29.x", { q: "in:spam", action: "trash" }, g.fetchImpl);
+    expect(r).toEqual({ changed: 3, action: "trash", q: "in:spam" });
+    expect(g.log.filter((l) => l.path.endsWith("/trash")).map((l) => l.path.split("/").at(-2))).toEqual(["s1", "s2", "s3"]);
+    await gmail.organize("ya29.x", { messageIds: ["m2"], action: "spam" }, g.fetchImpl);
+    expect(g.log.filter((l) => l.path.endsWith("/batchModify")).pop()!.body).toEqual({ ids: ["m2"], addLabelIds: ["SPAM"], removeLabelIds: ["INBOX"] });
+    await gmail.organize("ya29.x", { messageIds: ["m1"], action: "important" }, g.fetchImpl);
+    expect(g.log.filter((l) => l.path.endsWith("/batchModify")).pop()!.body).toEqual({ ids: ["m1"], addLabelIds: ["IMPORTANT"], removeLabelIds: [] });
+    await gmail.organize("ya29.x", { messageIds: ["m1"], action: "untrash" }, g.fetchImpl);
+    expect(g.log.some((l) => l.path.endsWith("/m1/untrash"))).toBe(true);
+    await expect(gmail.organize("ya29.x", { action: "archive" }, g.fetchImpl)).rejects.toThrow(/messageIds or q/);
+  });
+
+  it("attachments come out as files; forwarding re-attaches them and quotes the original", async () => {
+    const g = fakeGoogle();
+    // The job names the accountant, so forwarding there is inside the fence.
+    await store.insertIntern({ id: "m_inbox", owner: OWNER, name: "Postie", spec: { name: "Postie", template: "inbox", objective: "Forward the weekly digest to accountant@firm.com", cadence: "24h", sources: [], checks: [], tools: ["gmail_read", "gmail_forward"], output: { kind: "digest", maxWords: 100, alwaysReport: true }, voice: "terse", spendCapUsd: 0.02, model: "auto", tripwire: null }, status: "idle", delivery: {}, key: null, cadence: "24h", perRunCapUsd: 0.02, earnPerDayUsd: 1, burnPerDayUsd: 0.02, nextRunAt: Date.now(), createdAt: Date.now() }).catch(() => undefined);
+    const saved: Array<{ name: string; mime: string; size: number; caption: string }> = [];
+    const built = buildTools(["gmail_read", "gmail_forward"], {
+      fetch: g.fetchImpl,
+      delivery: {},
+      connections: { gmail: { owner: OWNER, email: "micheal@gmail.com" } },
+      files: async (f) => { saved.push({ name: f.name, mime: f.mime, size: f.bytes.byteLength, caption: f.caption }); return { ok: true, id: "f1", sentTo: ["intern page", "telegram"] }; },
+      propose: { owner: OWNER, internId: "m_inbox", internName: "Postie", runId: null, autopilot: true },
+    });
+    const att = await call<{ saved: boolean; file: string; sentTo: string[] }>(built.tools.find((t) => t.name === "gmail_read")!, { action: "attachment", id: "m2", attachmentId: "att1" });
+    expect(att).toMatchObject({ saved: true, file: "digest.pdf", sentTo: ["intern page", "telegram"] });
+    expect(saved[0]).toMatchObject({ name: "digest.pdf", mime: "application/pdf", size: 4, caption: "digest.pdf · from Substack <no-reply@substack.com> · Weekly digest" });
+
+    const fwd = await call<{ executed: boolean; result: { messageId: string } }>(built.tools.find((t) => t.name === "gmail_forward")!, { messageId: "m2", to: "accountant@firm.com", note: "For the books.", subject: "Weekly digest" });
+    expect(fwd).toMatchObject({ executed: true, result: { messageId: "sent1" } });
+    const sent = g.log.find((l) => l.path.endsWith("/messages/send"))!;
+    const raw = Buffer.from(sent.body!.raw as string, "base64url").toString("utf8");
+    expect(raw).toContain("To: accountant@firm.com");
+    expect(raw).toContain("Subject: Fwd: Weekly digest");
+    expect(raw).toContain('Content-Type: multipart/mixed; boundary="');
+    expect(raw).toContain('Content-Disposition: attachment; filename="digest.pdf"');
+    expect(raw).toContain(Buffer.from("%PDF").toString("base64"));
+    const textB64 = raw.split("Content-Transfer-Encoding: base64\r\n\r\n")[1].split("\r\n--")[0].replace(/\r\n/g, "");
+    expect(Buffer.from(textB64, "base64").toString("utf8")).toContain("For the books.\n\n---------- Forwarded message ----------\nFrom: Substack");
+  });
+
+  it("without Gmail connected the gmail tools are simply not offered, and a send fails plainly", async () => {
+    const built = buildTools(["gmail_read", "gmail_send", "deliver"], { delivery: {}, connections: {} });
+    expect(built.tools.map((t) => t.name)).toEqual(["deliver"]);
+  });
+
+  it("the intern is told which account 'my email' means; the inbox craft is part of its instructions", () => {
+    const spec: JobSpec = { name: "Postie", template: "inbox", objective: "Every morning tell me what came into my email that needs an answer and draft replies.", cadence: "24h", sources: [], checks: ["unread mail from people since last run"], tools: ["gmail_read", "gmail_draft", "deliver"], output: { kind: "digest", maxWords: 220, alwaysReport: true }, voice: "terse", spendCapUsd: 0.02, model: "auto", tripwire: null };
+    const text = buildInstructions(spec, { ownerShort: "0x7153…a23f", bag: 1_000_000, runAt: "now", gmailAddress: "micheal@gmail.com" });
+    expect(text).toContain("Gmail is connected as micheal@gmail.com");
+    expect(text).toContain("Craft: inbox.");
+    expect(text).toContain("gmail_draft in-thread");
+  });
+
+  it("an inbox intern without Gmail goes quiet instead of burning credits; with Gmail, deliver→email mails the owner themselves", async () => {
+    const other = "0x00000000000000000000000000000000000000f3";
+    const spec: JobSpec = { name: "Postie", template: "inbox", objective: "Brief me on my inbox.", cadence: "24h", sources: [], checks: [], tools: ["gmail_read", "deliver"], output: { kind: "digest", maxWords: 200, alwaysReport: true }, voice: "terse", spendCapUsd: 0.02, model: "auto", tripwire: null };
+    await store.setOwnerBag(other, 1_250_000);
+    const now = Date.now();
+    await store.insertIntern({ id: "m_postie", owner: other, name: "Postie", spec, status: "idle", delivery: {}, key: null, cadence: "24h", perRunCapUsd: 0.02, earnPerDayUsd: 30, burnPerDayUsd: 0.02, nextRunAt: now - 1000, createdAt: now });
+    await store.claimForRun("m_postie", now);
+    const quiet = await runOne("m_postie", { fetch: fakeGoogle().fetchImpl, anchor: null, bagOf: async () => 1_250_000, orbioFor: async () => ({} as never), run: async () => { throw new Error("must not run"); } });
+    expect(quiet.status).toBe("quiet");
+    expect((await store.listRuns("m_postie", 1))[0].error).toMatch(/Gmail isn't connected/);
+    // An hour later, still no Gmail: no second identical run row.
+    await store.updateIntern("m_postie", { nextRunAt: now - 1000 });
+    await store.claimForRun("m_postie", now);
+    await runOne("m_postie", { fetch: fakeGoogle().fetchImpl, anchor: null, bagOf: async () => 1_250_000, orbioFor: async () => ({} as never), run: async () => { throw new Error("must not run"); } });
+    expect((await store.listRuns("m_postie")).length).toBe(1);
+
+    // Connecting Gmail wakes it for a run now instead of waiting out the hour.
+    await store.setConnection(other, "gmail", "o@gmail.com", { email: "o@gmail.com", refreshToken: "1//r", accessToken: "ya29.o", expiresAt: now + 3_600_000, scope: "gmail.modify" } satisfies gmail.GmailConn);
+    const woke = await store.getIntern("m_postie");
+    expect(woke?.status).toBe("idle");
+    expect(woke!.nextRunAt).toBeLessThanOrEqual(Date.now());
+    const g = fakeGoogle();
+    await store.updateIntern("m_postie", { status: "idle", nextRunAt: now - 1000 });
+    await store.claimForRun("m_postie", now);
+    const r = await runOne("m_postie", {
+      fetch: g.fetchImpl,
+      anchor: null,
+      bagOf: async () => 1_250_000,
+      orbioFor: async () => ({} as never),
+      run: async (m, deps) => {
+        expect(m.connections?.gmail).toEqual({ owner: other, email: "o@gmail.com" });
+        expect(m.delivery.email).toBe("connected");
+        const sent = await deps.deliver!({ channel: "email", text: "Two threads need you: Yash about Thursday, and the accountant.\nDetails on the page." });
+        expect(sent.ok).toBe(true);
+        return { ok: true, status: "done", costUsd: 0.005, model: "test", modelCalls: 1, durationMs: 50, keyEvents: [], trace: [{ tool: "deliver", summary: "email · Two threads" }], key: m.key, plan: { cadence: "24h", perRunCapUsd: 0.02, burnPerDayUsd: 0.02, earnPerDayUsd: 30, quiet: false }, output: { title: "Two threads need you", summary: "Yash and the accountant.", body: "", sections: [], remember: "", sources: [], signal: "medium", nothingHappened: false } } as never;
+      },
+    });
+    expect(r.status).toBe("done");
+    const sent = g.log.find((l) => l.path.endsWith("/messages/send"))!;
+    const raw = Buffer.from(sent.body!.raw as string, "base64url").toString("utf8");
+    expect(raw).toContain("From: o@gmail.com\r\nTo: o@gmail.com\r\nSubject: Postie: Two threads need you: Yash about Thursday, and the accountant.");
+  });
+
+  it("inbox markdown becomes Telegram HTML: headings bold, links clickable, angle brackets escaped", () => {
+    const html = mdToHtml("## Needs you\n- **Yash** <yash@orbio.so> · Demo slot · [open](https://mail.google.com/mail/u/0/#all/t1)\n\n## Done this run\n- Archived 15 newsletters");
+    expect(html).toBe('<b>Needs you</b>\n• <b>Yash</b> &lt;yash@orbio.so&gt; · Demo slot · <a href="https://mail.google.com/mail/u/0/#all/t1">open</a>\n\n<b>Done this run</b>\n• Archived 15 newsletters');
+  });
+});
+
+describe("who a job may write to is decided in code", () => {
+  it("a new email to someone the job never named is refused; a reply to a thread participant is allowed", async () => {
+    const g = fakeGoogle();
+    const { propose } = await import("@/intern/proposals");
+    await store.insertIntern({ id: "m_fence", owner: OWNER, name: "Postie", spec: { name: "Postie", template: "inbox", objective: "Brief me on what needs an answer and draft replies", cadence: "24h", sources: [], checks: [], tools: ["gmail_read", "gmail_send"], output: { kind: "digest", maxWords: 100, alwaysReport: true }, voice: "terse", spendCapUsd: 0.02, model: "auto", tripwire: null }, status: "idle", delivery: {}, key: null, cadence: "24h", perRunCapUsd: 0.02, earnPerDayUsd: 1, burnPerDayUsd: 0.02, nextRunAt: Date.now(), createdAt: Date.now() }).catch(() => undefined);
+    const ctx = { owner: OWNER, internId: "m_fence", internName: "Postie", runId: null, autopilot: true, fetch: g.fetchImpl };
+    const cold = await propose({ kind: "email_send", mail: { to: "stranger@evil.io", subject: "hi", body: "x" } }, ctx);
+    expect(cold.status).toBe("failed");
+    expect(String((cold.result as { error?: string }).error)).toMatch(/not on this thread and not named in the job/);
+    const { token } = await gmail.accessToken(OWNER, g.fetchImpl);
+    const t = await gmail.readThread(token, "t1", g.fetchImpl);
+    const someone = t.messages[0].from.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)![0];
+    const reply = await propose({ kind: "email_send", mail: { to: someone, subject: "Re: hi", body: "Thursday works.", threadId: "t1", inReplyTo: "<x@y>" } }, ctx);
+    expect(["executed", "pending"]).toContain(reply.status);
+    const sneaky = await propose({ kind: "email_send", mail: { to: someone, cc: "stranger@evil.io", subject: "Re: hi", body: "x", threadId: "t1" } }, ctx);
+    expect(sneaky.status).toBe("failed");
+  });
+});
+
+describe("outgoing mail is exactly what the card says", () => {
+  it("a line break in any header is refused, so a reply cannot grow a hidden Bcc", () => {
+    expect(() => gmail.buildRaw("a@b.co", { to: "yash@orbio.so\r\nBcc: thief@evil.io", subject: "Re: demo", body: "x" })).toThrow(/invalid address|line break/);
+    expect(() => gmail.buildRaw("a@b.co", { to: "yash@orbio.so", subject: "Re: demo\nBcc: thief@evil.io", body: "x" })).toThrow(/line break/);
+    expect(() => gmail.buildRaw("a@b.co", { to: "yash@orbio.so", cc: "ok@x.io\r\nBcc: thief@evil.io", subject: "s", body: "x" })).toThrow(/invalid address|line break/);
+    expect(() => gmail.buildRaw("a@b.co", { to: "yash@orbio.so", subject: "s", body: "x", inReplyTo: "<a@b>\r\nBcc: thief@evil.io" })).toThrow(/line break/);
+  });
+  it("recipients are parsed into plain addresses; names are kept out of the envelope and junk is refused", () => {
+    expect(gmail.parseAddresses("Yash <yash@orbio.so>, dara@intern.money; Yash <yash@orbio.so>")).toEqual(["yash@orbio.so", "dara@intern.money"]);
+    expect(() => gmail.parseAddresses("yash at orbio")).toThrow(/invalid address/);
+    expect(() => gmail.parseAddresses("")).toThrow(/no recipient/);
+    expect(() => gmail.parseAddresses("Yash <yash@orbio.so> extra@x.io")).toThrow();
+    const raw = Buffer.from(gmail.buildRaw("a@b.co", { to: "Yash <yash@orbio.so>", cc: "Dara <dara@intern.money>", subject: "s", body: "x" }), "base64url").toString("utf8");
+    expect(raw).toMatch(/^To: yash@orbio.so$/m);
+    expect(raw).toMatch(/^Cc: dara@intern.money$/m);
+    expect(raw.match(/^Bcc:/m)).toBeNull();
+  });
+});

@@ -1,0 +1,413 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useAuth } from "@/lib/auth";
+import { BRAND } from "@/lib/brand";
+import { fmtBag, shortAddr, timeUntil, type ApiIntern } from "@/lib/api";
+import { AppDataProvider, useAppData } from "@/lib/app-data";
+import { BrandMark, Face, ProfileFace, Wordmark } from "./logo";
+import { OpenRouterMark, OrbioMark, RobinhoodMark } from "./marks";
+import { AnimatePresence, motion } from "motion/react";
+import { PanelLeft, Orbit, Rocket, Cable, Telescope, MessagesSquare, Plus, LogOut, ChevronsUpDown, Copy, Check, Globe, Ellipsis, Share2, ExternalLink, Trash2, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { OrbioStatus } from "@/lib/api";
+
+type NavItem = { href: string; label: string; icon: LucideIcon; match: (p: string) => boolean };
+const ALL_NAV: NavItem[] = [
+  { href: "/app", label: "Interns", icon: Orbit, match: (p) => p === "/app" },
+  { href: "/app/threads", label: "Threads", icon: MessagesSquare, match: (p) => p.startsWith("/app/threads") },
+  { href: "/app/connections", label: "Connections", icon: Cable, match: (p) => p.startsWith("/app/connections") },
+  { href: "/sky", label: "The sky", icon: Telescope, match: (p) => p.startsWith("/sky") || p.startsWith("/s/") },
+];
+const NAV = ALL_NAV.filter((t) => t.href !== "/app/threads" || BRAND.features.threads);
+const LAUNCH: NavItem = { href: "/app/new", label: "Launch", icon: Rocket, match: (p: string) => p.startsWith("/app/new") };
+const MOBILE_NAV = [NAV[0], LAUNCH, ...NAV.slice(1)].slice(0, 5);
+
+/**
+ * Signed-in shell. Desktop: one fixed sidebar (nav, the intern list grouped by state, the account) and one main pane;
+ * every page owns its own top bar. Phone: a slim header and the bottom tab bar. Gates on a connected wallet.
+ */
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const { ready, address, signed, disconnect } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // A signed wallet is the account; Orbio approval is prompted inside the app.
+  const allowed = !!address && signed;
+  const immersive = pathname.startsWith("/app/threads");
+  const [drawer, setDrawer] = useState(false);
+  const [navHidden, setNavHiddenState] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setNavHiddenState(localStorage.getItem("intern.nav.hidden") === "1"));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const setNavHidden = (v: boolean) => {
+    setNavHiddenState(v);
+    localStorage.setItem("intern.nav.hidden", v ? "1" : "0");
+  };
+  const bare = immersive || navHidden;
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!allowed) {
+      const next = encodeURIComponent(pathname + (typeof window !== "undefined" ? window.location.search : ""));
+      router.replace(`/sign-in?next=${next}`);
+    }
+  }, [ready, allowed, router, pathname]);
+
+  if (!ready || !allowed) {
+    return (
+      <div className="haze-soft flex min-h-screen items-center justify-center">
+        <BrandMark size={44} className="float" />
+      </div>
+    );
+  }
+
+  return (
+    <AppDataProvider owner={address!}>
+      <div className={`app-root h-dvh overflow-hidden bg-bg text-ink lg:grid lg:grid-rows-[minmax(0,1fr)] ${bare ? "lg:grid-cols-[minmax(0,1fr)]" : "lg:grid-cols-[240px_minmax(0,1fr)]"}`}>
+        {!bare && <Suspense fallback={<aside className="hidden lg:block" />}>
+          <Sidebar onHide={() => setNavHidden(true)} pathname={pathname} address={address!} onDisconnect={() => { disconnect(); router.push("/"); }} />
+        </Suspense>}
+
+        <div className="relative flex h-full min-h-0 min-w-0 flex-col">
+          {navHidden && !immersive && (
+            <button type="button" onClick={() => setNavHidden(false)} className="ui-btn ui-btn-ghost ui-btn-icon absolute left-2 top-2.5 z-40 hidden h-8 w-8 rounded-lg bg-cream/80 backdrop-blur lg:inline-flex" aria-label="Show sidebar" title="Show sidebar">
+              <PanelLeft size={16} strokeWidth={1.7} />
+            </button>
+          )}
+          <header className={`z-30 flex h-14 shrink-0 items-center gap-1 border-b border-line bg-white/90 backdrop-blur pl-2 pr-3 pt-[env(safe-area-inset-top)] box-content lg:hidden ${immersive ? "!hidden" : ""}`}>
+            <button type="button" onClick={() => setDrawer(true)} className="ui-btn ui-btn-ghost ui-btn-icon h-9 w-9 rounded-lg" aria-label="Menu">
+              <PanelLeft size={17} strokeWidth={1.7} />
+            </button>
+            <Link href="/app" className="mr-auto inline-flex items-center gap-2 px-1">
+              <BrandMark size={24} />
+              <Wordmark className="text-[18px] text-ink" />
+            </Link>
+            <Suspense><PhoneAccount address={address!} onDisconnect={() => { disconnect(); router.push("/"); }} /></Suspense>
+          </header>
+          <main className={`min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto lg:pb-0 ${immersive ? "pt-[env(safe-area-inset-top)] lg:pt-0" : "pb-[env(safe-area-inset-bottom)]"} ${navHidden && !immersive ? "lg:pl-10" : ""} [scrollbar-width:thin]`}>{children}</main>
+          <AnimatePresence>
+            {drawer && (
+              <div className="fixed inset-0 z-50 lg:hidden">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="absolute inset-0 bg-ink/30" onClick={() => setDrawer(false)} />
+                <motion.div
+                  initial={{ x: "-100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "-100%" }}
+                  transition={{ type: "spring", stiffness: 420, damping: 40 }}
+                  onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setDrawer(false); }}
+                  className="absolute inset-y-0 left-0 w-[86vw] max-w-[340px] bg-white pt-[env(safe-area-inset-top)] shadow-[8px_0_30px_-12px_rgba(5,31,32,0.35)]"
+                >
+                  <Suspense>
+                    <Sidebar pathname={pathname} address={address!} onDisconnect={() => { disconnect(); router.push("/"); }} onClose={() => setDrawer(false)} />
+                  </Suspense>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </AppDataProvider>
+  );
+}
+
+function Sidebar({ pathname, address, onDisconnect, onClose, onHide }: { pathname: string; address: string; onDisconnect: () => void; onClose?: () => void; onHide?: () => void }) {
+  const { interns, status } = useAppData();
+  const params = useSearchParams();
+  const selected = pathname === "/app" ? (params.get("m") ?? interns?.[0]?.id ?? null) : null;
+  const groups = groupInterns(interns ?? []);
+  const launching = pathname.startsWith("/app/new");
+  return (
+    <aside className={onClose ? "flex h-full min-h-0 flex-col" : "hidden min-h-0 lg:flex lg:h-full lg:flex-col lg:border-r lg:border-line lg:bg-white"}>
+      <div className="flex h-16 items-center justify-between pl-4 pr-2">
+        <Link href="/app" className="inline-flex items-center gap-2">
+          <BrandMark size={26} />
+          <Wordmark className="text-[19px] text-ink" />
+        </Link>
+        {onHide && (
+          <button type="button" onClick={onHide} className="ui-btn ui-btn-ghost ui-btn-icon h-8 w-8 rounded-lg" aria-label="Hide sidebar" title="Hide sidebar">
+            <PanelLeft size={16} strokeWidth={1.7} />
+          </button>
+        )}
+        {onClose && (
+          <button type="button" onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-icon h-9 w-9 rounded-lg" aria-label="Close menu">
+            <PanelLeft size={17} strokeWidth={1.7} />
+          </button>
+        )}
+      </div>
+
+      <div className="px-3">
+        <Link
+          href="/app/new"
+          className={`btn-grad flex h-10 items-center justify-center gap-2 rounded-btn px-3 text-[13.5px] font-medium text-white shadow-[0_8px_20px_-10px_rgba(5,31,32,.6)] transition hover:brightness-110 active:scale-[0.98] max-lg:text-[14.5px] ${launching ? "ring-2 ring-sage ring-offset-2" : ""}`}
+        >
+          <Plus size={15} strokeWidth={2} />
+          New intern
+        </Link>
+      </div>
+
+      <nav className="mt-3 px-3">
+        {NAV.map((t) => {
+          const active = t.match(pathname);
+          return (
+            <Link key={t.href} href={t.href} className={`flex h-9 items-center gap-2.5 rounded-btn px-2.5 text-[13.5px] transition-colors max-lg:h-11 max-lg:gap-3 max-lg:px-3 max-lg:text-[15px] ${active ? "bg-mint font-medium text-ink" : "text-text hover:bg-mint-2 hover:text-ink"}`}>
+              <t.icon size={16} strokeWidth={1.75} className={active ? "text-pine" : "text-muted"} />
+              {t.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="relative mt-5 min-h-0 flex-1">
+        <div className="h-full overflow-y-auto px-3 pb-6 [scrollbar-width:thin] [mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)]">
+          {interns && interns.length === 0 && <p className="px-2 py-1.5 text-[12.5px] leading-[1.5] text-ink-faint">No interns yet.</p>}
+          {groups.map(([label, items], gi) => (
+            <div key={label} className={gi === 0 ? "" : "mt-3"}>
+              <p className="eyebrow flex h-7 items-center justify-between px-2 !text-[10.5px] !text-muted">
+                <span>{groups.length > 1 || label !== "Scheduled" ? label : "Interns"}</span>
+                <span className="tabular-nums">{items.length}</span>
+              </p>
+              <ul>
+                {items.map((m) => (
+                  <li key={m.id}>
+                    <InternRow m={m} active={m.id === selected} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-line p-2">
+        <AccountMenu address={address} status={status} onDisconnect={onDisconnect} />
+      </div>
+    </aside>
+  );
+}
+
+function groupInterns(all: ApiIntern[]): Array<[string, ApiIntern[]]> {
+  const by = (f: (m: ApiIntern) => boolean) => all.filter(f);
+  return (
+    [
+      ["Working", by((m) => m.status === "running")],
+      ["Scheduled", by((m) => m.status === "idle")],
+      ["Paused", by((m) => m.status === "paused")],
+      ["Quiet", by((m) => m.status === "quiet")],
+    ] as Array<[string, ApiIntern[]]>
+  ).filter(([, items]) => items.length > 0);
+}
+
+/** Bottom tab bar for phones; the header tabs are hidden there. Also used on public pages when signed in. */
+export function MobileTabs({ pathname }: { pathname: string }) {
+  return (
+    <nav aria-label="App" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <ul className="mx-auto grid max-w-[640px]" style={{ gridTemplateColumns: `repeat(${MOBILE_NAV.length}, minmax(0, 1fr))` }}>
+        {MOBILE_NAV.map((t) => {
+          const active = t.href === "/app" ? pathname.startsWith("/app") && !pathname.startsWith("/app/connections") && !pathname.startsWith("/app/new") && !pathname.startsWith("/app/threads") : t.match(pathname);
+          return (
+            <li key={t.href}>
+              <Link href={t.href} className={`flex flex-col items-center gap-1 py-2 text-[10.5px] font-medium ${active ? "text-ink" : "text-muted"}`}>
+                <span className={`grid h-7 w-12 place-items-center rounded-pill transition-colors ${active ? "bg-mint text-pine" : ""}`}><t.icon size={19} strokeWidth={active ? 2 : 1.6} /></span>
+                {t.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+export function PoweredBy() {
+  return (
+    <footer className="border-t border-ink/10">
+      <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-4 font-mono text-[11px] text-ink-faint sm:px-6">
+        <span>intern · CREDIT by Orbio</span>
+        <span className="flex items-center gap-4">
+          <a href="https://www.orbio.so" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><OrbioMark size={13} /> credits by Orbio</a>
+          <a href="https://openrouter.ai" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><OpenRouterMark size={13} /> models via OpenRouter</a>
+          <a href="https://robinhoodchain.blockscout.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><RobinhoodMark size={13} /> anchored on Robinhood Chain</a>
+        </span>
+      </div>
+    </footer>
+  );
+}
+
+/** For public pages (/sky, /s/[id]): shows the phone tab bar only to signed-in owners. */
+export function PublicMobileTabs() {
+  const { address, signed } = useAuth();
+  const pathname = usePathname();
+  if (!address || !signed) return null;
+  return (
+    <>
+      <div className="h-16 sm:hidden" />
+      <MobileTabs pathname={pathname} />
+    </>
+  );
+}
+
+/** The wallet's profile picture: one of ten gradients, drawn once per wallet. */
+export function Profile({ n, size = 28 }: { n: number | undefined; size?: number }) {
+  return n ? (
+    <ProfileFace n={n} size={size} />
+  ) : (
+    <span className="inline-block shrink-0 rounded-full bg-ink/[0.08]" style={{ width: size, height: size }} />
+  );
+}
+
+export function Avatar({ n, size = 28, className = "" }: { n: number | undefined; size?: number; className?: string }) {
+  return n ? (
+    <Face n={n} size={size} className={className} />
+  ) : (
+    <span className={`inline-block shrink-0 rounded-full bg-ink/[0.08] ${className}`} style={{ width: size, height: size }} />
+  );
+}
+
+/** The account block at the bottom of the sidebar: press it for a small menu (copy address, the sky, disconnect). */
+export function AccountMenu({ address, status, onDisconnect }: { address: string; status: OrbioStatus | null; onDisconnect: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const copy = async () => { try { await navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch {} };
+  return (
+    <div ref={ref} className="relative">
+      {open && (
+        <div role="menu" className="ui-in absolute bottom-[calc(100%+6px)] left-0 right-0 z-40 rounded-xl border border-ink/[0.08] bg-white p-1 shadow-[0_8px_24px_-8px_rgba(5,31,32,0.18),0_2px_6px_rgba(5,31,32,0.06)]">
+          <div className="flex items-center gap-2.5 px-2.5 py-2">
+            <Profile n={status?.avatar} size={32} />
+            <div className="min-w-0">
+              <p className="truncate font-mono text-[12.5px] text-ink">{shortAddr(address)}</p>
+              <p className="truncate text-[11.5px] text-ink-faint">{status ? `${fmtBag(status.bag)} $ORBIO · ${status.approved ? "Orbio approved" : "Orbio pending"}` : "…"}</p>
+            </div>
+          </div>
+          <div className="my-1 h-px bg-ink/[0.06]" />
+          <button role="menuitem" type="button" onClick={copy} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]">
+            <span className="text-ink-soft">{copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}</span>{copied ? "Copied" : "Copy address"}
+          </button>
+          <Link role="menuitem" href="/sky" onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]">
+            <span className="text-ink-soft"><Globe size={14} strokeWidth={1.75} /></span>The sky
+          </Link>
+          <div className="my-1 h-px bg-ink/[0.06]" />
+          <button role="menuitem" type="button" onClick={onDisconnect} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]">
+            <span className="text-ink-soft"><LogOut size={14} strokeWidth={1.75} /></span>Disconnect wallet
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors ${open ? "bg-ink/[0.06]" : "hover:bg-ink/[0.05]"}`}
+      >
+        <span className="relative shrink-0">
+          <Profile n={status?.avatar} size={22} />
+          <span className={`absolute -bottom-px -right-px h-2 w-2 rounded-full ring-2 ring-paper ${status?.approved ? "bg-moss" : "bg-ink-faint"}`} />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-ink">{shortAddr(address)}</span>
+        {status && <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-faint">{fmtBag(status.bag)}</span>}
+        <ChevronsUpDown size={13} strokeWidth={1.75} className="shrink-0 text-ink-faint" />
+      </button>
+    </div>
+  );
+}
+
+function PhoneAccount({ address, onDisconnect }: { address: string; onDisconnect: () => void }) {
+  const { status } = useAppData();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} className="inline-flex items-center gap-2 rounded-full border border-ink/[0.1] bg-white py-1 pl-1 pr-2.5">
+        <Profile n={status?.avatar} size={24} />
+        <span className="font-mono text-[12px] text-ink">{shortAddr(address)}</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div role="menu" className="ui-in absolute right-0 top-[calc(100%+6px)] z-40 min-w-[200px] rounded-xl border border-ink/[0.08] bg-white p-1 shadow-[0_8px_24px_-8px_rgba(5,31,32,0.18)]">
+            <button role="menuitem" type="button" onClick={() => { navigator.clipboard?.writeText(address).catch(() => undefined); setOpen(false); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]"><Copy size={14} strokeWidth={1.75} className="text-ink-soft" /> Copy address</button>
+            <button role="menuitem" type="button" onClick={onDisconnect} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]"><LogOut size={14} strokeWidth={1.75} className="text-ink-soft" /> Disconnect wallet</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Where a intern's link lives. */
+export const publicUrl = (id: string) => `${typeof window !== "undefined" ? window.location.origin : "https://intern.money"}/s/${id}`;
+
+/** One row in the sidebar list: face, name, template · when. Right-click (or the ··· on hover) for Share and Public page. */
+function InternRow({ m, active }: { m: ApiIntern; active: boolean }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [copied, setCopied] = useState<"link" | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", close); document.addEventListener("keydown", onKey); document.addEventListener("scroll", close, true);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", onKey); document.removeEventListener("scroll", close, true); };
+  }, [menu]);
+  const copy = async (what: "link") => {
+    try { await navigator.clipboard.writeText(publicUrl(m.id)); } catch {}
+    setCopied(what); setTimeout(() => { setCopied(null); setMenu(null); }, 900);
+  };
+  const share = async () => {
+    if (typeof navigator !== "undefined" && navigator.share) { try { await navigator.share({ title: `${m.name} · intern`, url: publicUrl(m.id) }); setMenu(null); return; } catch {} }
+    void copy("link");
+  };
+  return (
+    <>
+      <Link
+        href={`/app?m=${m.id}`}
+        onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
+        className={`group flex h-9 items-center gap-2 rounded-btn px-2 text-[13.5px] ${active ? "bg-mint text-ink" : "text-text hover:bg-mint-2 hover:text-ink"}`}
+      >
+        <Avatar n={m.avatar} size={24} className={active ? "" : "opacity-90"} />
+        <span className={`min-w-0 flex-1 truncate ${active ? "font-medium" : ""}`}>{m.name}</span>
+        <span className="relative flex h-5 w-8 shrink-0 items-center justify-end">
+          <span className={`font-mono text-[10.5px] tabular-nums text-ink-faint transition-opacity ${menu ? "opacity-0" : "group-hover:opacity-0"}`}>
+            {m.status === "running" ? <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-gold" /> : m.status === "idle" ? timeUntil(m.nextRunAt).replace(/^in /, "") : m.status === "quiet" ? <span className="inline-block h-1.5 w-1.5 rounded-full border border-gold" /> : <span className="inline-block h-1.5 w-1.5 rounded-full border border-ink-faint" />}
+          </span>
+          <button
+            type="button"
+            aria-label="More"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu({ x: r.right, y: r.bottom + 4 }); }}
+            className={`absolute right-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition-opacity hover:bg-ink/[0.06] hover:text-ink ${menu ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          >
+            <Ellipsis size={14} strokeWidth={1.75} />
+          </button>
+        </span>
+      </Link>
+      {menu && createPortal(
+        <div role="menu" onMouseDown={(e) => e.stopPropagation()} className="ui-in fixed z-[60] min-w-[200px] rounded-xl border border-ink/[0.08] bg-white p-1 shadow-[0_8px_24px_-8px_rgba(5,31,32,0.18),0_2px_6px_rgba(5,31,32,0.06)]" style={{ left: Math.min(menu.x, window.innerWidth - 216), top: Math.min(menu.y, window.innerHeight - 200) }}>
+          <div className="flex items-center gap-2.5 px-2.5 py-2">
+            <Avatar n={m.avatar} size={28} />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium text-ink">{m.name}</p>
+              <p className="truncate font-mono text-[11px] text-ink-faint">{m.id}</p>
+            </div>
+          </div>
+          <div className="my-1 h-px bg-ink/[0.06]" />
+          <button role="menuitem" type="button" onClick={share} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]">{copied === "link" ? <Check size={14} strokeWidth={2} className="text-moss" /> : <Share2 size={14} strokeWidth={1.75} className="text-ink-soft" />} {copied === "link" ? "Link copied" : "Share"}</button>
+          <Link role="menuitem" href={`/s/${m.id}`} onClick={() => setMenu(null)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-ink/[0.05]"><ExternalLink size={14} strokeWidth={1.75} className="text-ink-soft" /> Public page</Link>
+          <div className="my-1 h-px bg-ink/[0.06]" />
+          <Link role="menuitem" href={`/app?m=${m.id}&delete=1`} onClick={() => setMenu(null)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-[#b91c1c] hover:bg-[#b91c1c]/[0.06]"><Trash2 size={14} strokeWidth={1.75} /> Delete</Link>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
