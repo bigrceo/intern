@@ -83,7 +83,7 @@ export function Nav() {
         <AnimatePresence>
           {open && (
             <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} className="mx-4 mt-1 overflow-hidden rounded-card bg-white p-3 card-shadow lg:hidden">
-              {[...links, { href: "/sign-in", label: "Sign in" }].map((l) => (
+              {[...links, { href: "/sign-in", label: "Sign in" }, ...(BRAND.social.x ? [{ href: BRAND.social.x, label: "X · @intern_money" }] : []), ...(BRAND.social.telegramBot ? [{ href: `https://t.me/${BRAND.social.telegramBot}`, label: "Telegram bot" }] : [])].map((l) => (
                 <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="block rounded-sm px-3 py-3 text-[16px] text-ink transition-colors hover:bg-mint-2">
                   {l.label}
                 </Link>
