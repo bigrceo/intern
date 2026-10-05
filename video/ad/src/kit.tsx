@@ -22,7 +22,7 @@ export function Kinetic({ words, at, size = 150, color = C.ink, accent, stagger 
         const t = ease(f, at + i * stagger, at + i * stagger + 22, 0, 1, Easing.bezier(0.2, 1.4, 0.4, 1));
         const blur = ease(f, at + i * stagger, at + i * stagger + 10, 10, 0);
         return (
-          <span key={i} style={{ overflow: "hidden", display: "inline-block", paddingBottom: size * 0.08 }}>
+          <span key={i} style={{ overflow: "hidden", display: "inline-block", paddingBottom: size * 0.24, marginBottom: -size * 0.16 }}>
             <span style={{ display: "inline-block", transform: `translateY(${(1 - t) * 110}%) rotate(${(1 - t) * 6}deg)`, filter: `blur(${blur}px)`, color: accent?.includes(i) ? C.forest : color }}>{w}</span>
           </span>
         );
