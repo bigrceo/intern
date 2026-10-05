@@ -8,7 +8,7 @@ import { Button } from "./nova/ui/Button";
 import { BRAND } from "@/lib/brand";
 import { XIcon } from "./nova/site/XIcon";
 import { marks } from "./inline-marks";
-import { GitHubMark, TelegramMark } from "./marks";
+import { TelegramMark } from "./marks";
 
 const links = [
   { href: "/#how", label: "How it works" },
@@ -53,17 +53,13 @@ export function Nav() {
               </Link>
             ))}
           </nav>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 lg:pl-6">
             {BRAND.social.telegramBot && (
-              <Link href={`https://t.me/${BRAND.social.telegramBot}`} target="_blank" rel="noreferrer" aria-label={`${BRAND.name} on Telegram`} className="hidden h-9 w-9 place-items-center rounded-full transition-colors hover:bg-mint-2 sm:grid">
+              <Link href={`https://t.me/${BRAND.social.telegramBot}`} target="_blank" rel="noreferrer" aria-label={`${BRAND.name} on Telegram`} className="hidden h-9 w-9 place-items-center rounded-full transition-colors hover:bg-mint-2 xl:grid">
                 <TelegramMark size={16} />
               </Link>
             )}
-            {BRAND.social.github && (
-              <Link href={BRAND.social.github} target="_blank" rel="noreferrer" aria-label={`${BRAND.name} on GitHub`} className="hidden h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-mint-2 sm:grid">
-                <GitHubMark size={16} />
-              </Link>
-            )}
+
             {BRAND.social.x && (
               <Link href={BRAND.social.x} target="_blank" rel="noreferrer" aria-label={`${BRAND.name} on X`} className="grid h-9 w-9 place-items-center rounded-full text-ink transition-colors hover:bg-mint-2">
                 <XIcon size={14} />
