@@ -76,6 +76,8 @@ export async function runIntern(m: InternState, deps: RunDeps): Promise<RunResul
   const now = deps.now ?? (() => new Date());
   const keyEvents: KeyEvent[] = [];
   const trace: TraceEvent[] = [];
+  // URLs the tools actually read this run: the report's sources when the model leaves them out.
+  const readUrls = new Set<string>();
   // Set by the tools the moment they touch mail or a private repo; inbox jobs are private from the start.
   let isPrivate = m.spec.tools.some((t) => t.startsWith("gmail_"));
   const bag = deps.bagOf ? await deps.bagOf(m.owner) : m.bag;
@@ -111,6 +113,7 @@ export async function runIntern(m: InternState, deps: RunDeps): Promise<RunResul
       propose: { owner: m.owner, internId: m.id, internName: m.spec.name, runId: m.runId ?? null, autopilot: !!m.autopilot },
       compile: m.parentId ? undefined : (i) => compileJob(k.key, i),
       trace: (e) => trace.push({ at: Date.now() - t0, ...e }),
+      sourced: (urls) => urls.forEach((u) => readUrls.size < 24 && readUrls.add(u.replace(/[.,;]+$/, ""))),
       onPrivate: () => { isPrivate = true; },
     });
     const r = await runLoop({
@@ -196,6 +199,8 @@ export async function runIntern(m: InternState, deps: RunDeps): Promise<RunResul
     if (!parsed) return fail(new Error("model did not return valid RunOutput"), "output", { t0, model, p, keyEvents, trace, key, cost: spentSoFar, calls: callsSoFar, isPrivate });
     // Scores refer to the open calls in order; models sometimes leave the claim blank, so fill it from the call being scored.
     parsed.scored = parsed.scored.map((s, i) => ({ ...s, claim: s.claim.trim() || m.openCalls?.[i]?.claim || "" })).filter((s) => s.claim);
+    // A report that read the market but names no source gets the pages its tools actually hit (before hashing, so the proof covers them).
+    if (!parsed.sources.length && !isPrivate) parsed.sources = [...readUrls].slice(0, 6);
 
     void cost; void calls;
     const spent: KeyState = key ? { ...key, spentUsd: key.spentUsd + spentSoFar } : null;
@@ -234,7 +239,9 @@ async function ensureFunded(key: KeyState, p: Plan, orbio: OrbioClient, events: 
   // one would be refused on every run.
   const signed = await orbio.createKey().catch((e) => { if (key?.key.startsWith("sk-orbio-") && e instanceof OrbioAuthError) return null; throw e; });
   if (!signed) return { ...key!, limitUsd: bal.availableUsd };
-  if (!key || key.key !== signed.key) events.push({ kind: "claimed", detail: key ? "using the wallet's re-signed Orbio key" : "using the wallet's signed Orbio key; it spends the activated balance", amountUsd: bal.availableUsd });
+  const trialPaid = !!(signed.raw as { trial?: boolean } | undefined)?.trial;
+  if (trialPaid) events.push({ kind: "claimed", detail: "paid from Intern's free trial credit", amountUsd: bal.availableUsd });
+  else if (!key || key.key !== signed.key) events.push({ kind: "claimed", detail: key ? "using the wallet's re-signed Orbio key" : "using the wallet's signed Orbio key; it spends the activated balance", amountUsd: bal.availableUsd });
   return { key: signed.key, limitUsd: bal.availableUsd, spentUsd: key?.key === signed.key ? key.spentUsd : 0 };
 }
 

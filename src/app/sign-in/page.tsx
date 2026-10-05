@@ -10,6 +10,7 @@ import { shortAddr } from "@/lib/api";
 import { BrandMark } from "@/components/logo";
 import { DitherField } from "@/components/dither-field";
 import { DitherMark } from "@/components/dither-mark";
+import { BRAND } from "@/lib/brand";
 import { MetaMaskMark, OpenRouterMark, OrbioMark, RabbyMark, RobinhoodMark, WalletConnectMark } from "@/components/marks";
 import { detectWallets, type WalletId } from "@/lib/auth";
 
@@ -57,14 +58,34 @@ function SignInInner() {
             Sign in to Intern
           </h1>
           <p className="mt-1.5 text-center text-[13.5px] leading-[1.55] text-ink-soft">
-            {marks("Your wallet is the account. The CREDIT your staked $ORBIO earns is the budget.", 13)}
+            {BRAND.features.orbioLogin ? "Pay per run, from about a cent. Start with Google or email, or bring your wallet." : marks("Your wallet is the account. The CREDIT your staked $ORBIO earns is the budget.", 13)}
           </p>
 
-          <ol className="mt-8 space-y-3">
+          {!address && BRAND.features.orbioLogin && (
+
+            <div className="mt-8">
+
+              <a href={`/api/auth/orbio/start?next=${encodeURIComponent(next)}`} onClick={() => setBusy("orbio")} className="btn-grad flex h-12 w-full items-center justify-center gap-2.5 rounded-btn px-4 text-[14.5px] font-medium text-white shadow-[0_8px_20px_-10px_rgba(5,31,32,.6)] transition hover:brightness-110">
+
+                <OrbioMark size={18} /> {busy === "orbio" ? "Opening Orbio…" : "Continue with Google or email"}
+
+              </a>
+
+              <p className="mt-2 text-center text-[12px] leading-[1.5] text-ink-soft">Through Orbio. No wallet needed: top up from $5 by card on orbio.so.</p>
+
+              {params.get("orbio_error") && <p className="mt-2 text-center text-[12.5px] text-red-700">{params.get("orbio_error")}</p>}
+
+              <div className="my-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.14em] text-ink-faint"><span className="h-px flex-1 bg-ink/10" /> or use a wallet <span className="h-px flex-1 bg-ink/10" /></div>
+
+            </div>
+
+          )}
+
+          <ol className={`${!address && BRAND.features.orbioLogin ? "" : "mt-8"} space-y-3`}>
             <Step
               n={1}
               state={step > 1 ? "done" : "active"}
-              title={address ? `Connected ${shortAddr(address)}` : "Connect the wallet that holds $ORBIO"}
+              title={address ? `Connected ${shortAddr(address)}` : BRAND.features.orbioLogin ? "Connect a wallet" : "Connect the wallet that holds $ORBIO"}
               hint={address ? "Signed in. This signature is your login; it never moves tokens." : "Robinhood Chain · stake $ORBIO to earn CREDIT · you sign one message, no gas"}
             >
               {!address && (
@@ -121,7 +142,10 @@ function SignInInner() {
               hint="Your wallet signs Orbio's key message; that signature is the gateway key your interns bill. No account, no checkout. You activate CREDIT from the same wallet whenever an intern asks."
             >
               {address && !orbioChecked && !skipOrbio && (
-                <p className="mt-3 font-mono text-[12px] text-ink-soft">Checking Orbio…</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="font-mono text-[12px] text-ink-soft">Checking Orbio…</p>
+                  <button onClick={() => router.replace(next)} className="text-[11.5px] text-ink-faint underline decoration-ink/20 underline-offset-2 hover:text-ink">skip for now →</button>
+                </div>
               )}
               {step === 2 && (
                 <>
@@ -143,7 +167,7 @@ function SignInInner() {
                     {busy === "orbio" ? "Waiting for your wallet…" : "Sign for key"}
                   </button>
                   <button onClick={() => router.replace(next)} className="mt-2 w-full font-mono text-[11.5px] text-ink-faint hover:text-ink">
-                    skip for now — interns stay quiet until signed
+                    skip for now → new accounts start with free AI; sign later to use your own CREDIT
                   </button>
                 </>
               )}
@@ -158,8 +182,8 @@ function SignInInner() {
             <span className="inline-flex items-center gap-1.5 font-mono text-[11px]"><RobinhoodMark size={14} /> Robinhood Chain</span>
           </div>
           <p className="mt-4 text-center text-[12px] leading-[1.6] text-ink-faint">
-            No email, no password. Intern never sees your private key and never moves your
-            tokens. Forget the signed key any time under Connections; rotate it on Orbio by signing a higher epoch.
+            Intern never sees your password or private key and never moves your tokens. Disconnect Orbio or forget a signed
+            key any time under Connections.
           </p>
         </div>
       </section>

@@ -10,11 +10,13 @@ import { Section, SectionHead } from "../nova/Section";
 import { BRAND } from "@/lib/brand";
 
 /** "Start in N simple steps": alternating rows, 01–04, checks, an illustration on the haze. */
-export function Steps() {
+export function Steps({ freeUsd = 0 }: { freeUsd?: number }) {
   const n = BRAND.noun;
   const steps = [
     { pose: "listen" as const, n: "01 · Brief", title: "Say the job", body: "Write it like a text message. Your intern turns it into a plan: what to check, which tools, how often. Change anything before it starts.", art: <BriefArt /> },
-    { pose: "sign" as const, n: "02 · Key", title: "Your wallet is the key", body: "One signature in your wallet and you are set. No account, no password, no API key to copy.", art: <KeyArt /> },
+    BRAND.features.orbioLogin
+      ? { pose: "sign" as const, n: "02 · Sign in", title: "Sign in your way", body: `Google, email or a wallet.${freeUsd > 0 ? ` New accounts start with $${freeUsd} of free AI on us.` : ""} After that, top up from $5 by card or crypto, or let your staked $ORBIO earn the CREDIT that pays for it.`, art: <KeyArt /> }
+      : { pose: "sign" as const, n: "02 · Key", title: "Your wallet is the key", body: "One signature in your wallet and you are set. No account, no password, no API key to copy.", art: <KeyArt /> },
     { pose: "work" as const, n: "03 · Run", title: "It works while you don't", body: "On your schedule, within the budget you set, paid from the credits your $ORBIO earns. It reads the chain, the markets and the web, and asks you before it posts anything.", art: <RunArt /> },
     { pose: "stamp" as const, n: "04 · Receipt", title: "It leaves a receipt", body: "After every job: what it cost, which AI it used, how long it took, and a fingerprint of what it wrote, saved on Robinhood Chain. Anyone can check it.", art: <ReceiptArt /> },
   ];

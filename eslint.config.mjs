@@ -7,6 +7,9 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Override default ignores of eslint-config-next.
   globalIgnores([
+    "video/**",
+    "x-launch-pack/**",
+    "design/**",
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",

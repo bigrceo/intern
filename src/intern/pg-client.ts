@@ -21,6 +21,29 @@ const UPSERT_KEYS: Record<string, string[]> = {
   kv: ["k"],
 };
 
+/** SQLite's two-argument MIN/MAX are scalars; Postgres calls them LEAST/GREATEST. One-argument ones stay aggregates. */
+function scalarMinMax(sql: string) {
+  let out = "";
+  for (let i = 0; i < sql.length; i++) {
+    const m = /^(MIN|MAX)\(/i.exec(sql.slice(i, i + 4));
+    const prev = i > 0 ? sql[i - 1] : " ";
+    if (m && !/[\w.]/.test(prev)) {
+      let depth = 0, comma = false, j = i + 3;
+      for (; j < sql.length; j++) {
+        if (sql[j] === "(") depth++;
+        else if (sql[j] === ")") { depth--; if (depth === 0) break; }
+        else if (sql[j] === "," && depth === 1) comma = true;
+      }
+      if (comma) { out += m[1].toUpperCase() === "MIN" ? "LEAST" : "GREATEST"; i += 2; continue; }
+    }
+    out += sql[i];
+  }
+  return out;
+}
+
+/** "INSERT INTO t … WHERE (SELECT COUNT(*) FROM t …) < cap": atomic under SQLite's single writer, racy under Postgres. */
+const guardedInsert = (sql: string) => /^\s*INSERT INTO (\w+)[\s\S]*\(SELECT COUNT\(\*\) FROM (\w+)/i.exec(sql);
+
 export function translate(sql: string, schema = process.env.PG_SCHEMA ?? "intern"): string {
   let s = sql;
   const pragma = s.match(/^\s*PRAGMA table_info\((\w+)\)\s*$/i);
@@ -33,7 +56,7 @@ export function translate(sql: string, schema = process.env.PG_SCHEMA ?? "intern
   s = s.replace(/abs\(random\(\)\) % (\d+)/gi, "floor(random() * $1)::bigint");
   s = s.replace(/\binstr\(/gi, "strpos(");
   s = s.replace(/\bjson_object\(([^()]*)\)/g, "json_build_object($1)::text");
-  s = s.replace(/\bMAX\(0,/g, "GREATEST(0,");
+  s = scalarMinMax(s);
   s = s.replace(/\bLIKE\b/g, "ILIKE"); // SQLite LIKE ignores case
 
   const ignore = s.match(/^\s*INSERT OR IGNORE INTO/i);
@@ -72,7 +95,23 @@ export function createPgClient(url: string, schema = process.env.PG_SCHEMA ?? "i
   return {
     async execute(stmt: Stmt) {
       await ensureSchema();
-      return run(pool, stmt);
+      const sql = typeof stmt === "string" ? stmt : stmt.sql;
+      const g = guardedInsert(sql);
+      if (!g) return run(pool, stmt);
+      // Serialize capped inserts per table with a transaction-scoped advisory lock, so a burst cannot overshoot the cap.
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${schema}.${g[2]}`]);
+        const r = await run(c, stmt);
+        await c.query("COMMIT");
+        return r;
+      } catch (e) {
+        await c.query("ROLLBACK").catch(() => undefined);
+        throw e;
+      } finally {
+        c.release();
+      }
     },
     async batch(stmts: Stmt[], _mode?: string) {
       await ensureSchema();

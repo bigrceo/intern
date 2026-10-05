@@ -8,13 +8,13 @@ import { HeroMock } from "./HeroMock";
 import { BRAND } from "@/lib/brand";
 
 /** The template hero: two columns, a two-line 48px title, the input as the CTA, three checks, the app mock on the right. */
-export function Hero() {
+export function Hero({ freeUsd = 0 }: { freeUsd?: number }) {
   return (
     <section className="hero-haze relative overflow-hidden px-4 pb-16 pt-[112px] sm:px-6 lg:pb-24 lg:pt-[150px]">
       <div className="relative z-10 mx-auto grid w-full max-w-[1088px] items-center gap-12 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <div>
           <Reveal onLoad y={20}>
-            <p className="eyebrow">AI agents paid by your bag</p>
+            <p className="eyebrow">AI agents paid by your bag{freeUsd > 0 ? " · start free" : ""}</p>
           </Reveal>
           <Reveal onLoad y={20} delay={0.05}>
             <h1 className="mt-4 text-[40px] sm:text-[46px] lg:text-[48px]">
@@ -25,7 +25,7 @@ export function Hero() {
           </Reveal>
           <Reveal onLoad y={20} delay={0.1}>
             <p className="mt-5 max-w-[460px] text-[16px] leading-[1.6] text-text">
-              {marks(`Write what you want in one sentence. An AI ${BRAND.noun} does it for you around the clock, paid by what your staked $ORBIO earns. No card, nothing to set up. Sell the bag and it stops.`, 15)}
+              {marks(`Write what you want in one sentence. An AI ${BRAND.noun} does it for you around the clock, paid by what your staked $ORBIO earns. No card, nothing to set up. Sell the bag and it stops.${freeUsd > 0 ? ` Start free with $${freeUsd} of AI on us.` : ""}`, 15)}
             </p>
           </Reveal>
           <Reveal onLoad y={20} delay={0.2}>
@@ -40,6 +40,13 @@ export function Hero() {
               <Check>{marks("A public receipt for every job, on Robinhood Chain")}</Check>
             </div>
           </Reveal>
+          {freeUsd > 0 && (
+            <Reveal onLoad y={20} delay={0.33}>
+              <Link href="/sign-in" className="btn-grad mt-7 inline-flex h-11 items-center gap-2 rounded-btn px-5 text-[14px] font-medium text-white shadow-[0_8px_20px_-10px_rgba(5,31,32,.6)] transition hover:brightness-110">
+                Start free · ${freeUsd} on us →
+              </Link>
+            </Reveal>
+          )}
           <Reveal onLoad y={20} delay={0.35}>
             <Link href="#how" className="mt-6 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-pine underline decoration-sage/60 underline-offset-4 hover:decoration-pine">
               How it works →

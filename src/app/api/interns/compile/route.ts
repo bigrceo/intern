@@ -5,6 +5,7 @@ import { bad, ownerFrom } from "@/intern/http";
 import { TEMPLATE_IDS } from "@/intern/spec";
 import { connectionFor, listRepos } from "@/intern/connections/github";
 import * as store from "@/intern/store";
+import { billingKey } from "@/intern/trial";
 
 const Body = z.object({ sentence: z.string().min(8).max(500), template: z.enum(TEMPLATE_IDS), name: z.string().max(24).optional() });
 
@@ -21,14 +22,19 @@ export async function POST(req: Request) {
   // The wallet's own signed key first (a fresh holder has no interns yet), then a key one of their interns holds, then the platform key.
   const signedKey = (await store.getOwner(owner))?.orbioKey ?? null;
   const ownKey = signedKey ?? (await store.listInterns(owner)).find((m) => m.key?.key)?.key?.key;
-  const key = ownKey ?? process.env.COMPILE_API_KEY ?? process.env.OPENROUTER_API_KEY;
-  if (!key) return NextResponse.json({ spec: fallbackSpec(body.data), compiled: false });
-  try {
-    const gh = await connectionFor(owner);
-    const repos = gh ? await listRepos(gh.data.token, 30).then((r) => r.map((x) => x.repo)).catch(() => []) : [];
-    const spec = await compileJob(key, { ...body.data, repos });
-    return NextResponse.json({ spec, compiled: true });
-  } catch {
-    return NextResponse.json({ spec: fallbackSpec(body.data), compiled: false });
+  // A fresh holder's own key usually has no balance yet, so a refusal there falls through to the platform key.
+  // A brand-new account on the free trial plans on the trial key (a fraction of a cent) when it has no balance of its own.
+  const trialKey = (await billingKey(owner).catch(() => null))?.key;
+  const keys = [...new Set([ownKey, trialKey, process.env.COMPILE_API_KEY || process.env.OPENROUTER_API_KEY].filter((k): k is string => !!k))];
+  if (!keys.length) return NextResponse.json({ spec: fallbackSpec(body.data), compiled: false });
+  const gh = await connectionFor(owner).catch(() => null);
+  const repos = gh ? await listRepos(gh.data.token, 30).then((r) => r.map((x) => x.repo)).catch(() => []) : [];
+  for (const key of keys) {
+    try {
+      return NextResponse.json({ spec: await compileJob(key, { ...body.data, repos }), compiled: true });
+    } catch (e) {
+      console.error(`compile (${key === ownKey ? "owner key" : "platform key"}):`, (e as Error).message);
+    }
   }
+  return NextResponse.json({ spec: fallbackSpec(body.data), compiled: false });
 }

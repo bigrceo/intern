@@ -1,7 +1,7 @@
 import type { Hex } from "viem";
 import { makeAnchorer, type Anchorer } from "./anchor";
 import { estimateEarnPerDay } from "./budget";
-import { makeCreditClient, OrbioAuthError, syncActivations, type OrbioClient } from "./orbio";
+import { gatewayBalance, makeCreditClient, OrbioAuthError, syncActivations, type OrbioClient } from "./orbio";
 import { devOrbio } from "./orbio-dev";
 import { runIntern } from "./runner";
 import { CADENCE_MS, type Cadence } from "./spec";
@@ -21,6 +21,8 @@ import { probeTripwires, readMetric } from "./tripwire";
 import type { GmailConn } from "./connections/gmail";
 import { proposeActivation, telegramCallback } from "./proposals";
 import { concierge } from "./concierge";
+import { refreshDueTokens } from "./orbio-oauth";
+import { addTrialSpend, isTrialKey, trialOf, withTrial } from "./trial";
 import { followup } from "./followup";
 
 /**
@@ -46,10 +48,14 @@ export async function orbioFor(owner: string, fetchImpl: typeof fetch = fetch): 
   const dev = devOrbio();
   if (dev) return dev;
   const o = await store.getOwner(owner);
-  if (o?.orbioKey) return makeCreditClient(owner, fetchImpl);
+  let own: OrbioClient | null = null;
+  if (o?.orbioKey) own = makeCreditClient(owner, fetchImpl);
   // A wallet that never signed can still run on the account key Orbio's dashboard issued, held by its interns.
-  if ((await store.listInterns(owner)).some((m) => m.key?.key.startsWith("sk-orbio-"))) return makeCreditClient(owner, fetchImpl);
-  return null;
+  else if ((await store.listInterns(owner)).some((m) => m.key?.key.startsWith("sk-orbio-") && !isTrialKey(m.key.key))) own = makeCreditClient(owner, fetchImpl);
+  // A new account's free trial (granted on a real app visit, never here) pays until their own balance can.
+  const trial = await trialOf(owner).catch(() => null);
+  if (trial?.active) return withTrial(owner, own);
+  return own;
 }
 
 /** Runs due interns with bounded concurrency so a burst never trips a model's per-minute cap. */
@@ -58,9 +64,11 @@ export async function tick(deps: SchedulerDeps = {}, limit = 10, concurrency = N
   await store.releaseStale(now() - 10 * 60_000);
   await store.reconcileStuckActions(now() - 5 * 60_000).catch(() => undefined);
   await probeTripwires(now(), deps.fetch).catch((e) => console.error("tripwire probe", (e as Error).message));
+  // Sign in with Orbio tokens last an hour; refresh the ones close to expiry here, the one place that refreshes.
+  if (!deps.orbioFor) await refreshDueTokens({ fetch: deps.fetch }).catch((e) => console.error("orbio token refresh", (e as Error).message));
   // A quiet intern is waiting for money. Look at the chain for its owner's activations every tick, so an activation made
   // anywhere wakes it within the minute rather than at its next scheduled slot.
-  if (!deps.orbioFor) for (const owner of await store.ownersWithQuietInterns()) await syncActivations(owner, deps.fetch);
+  if (!deps.orbioFor) for (const owner of await store.ownersWithQuietInterns()) await wakeIfFunded(owner, now(), deps.fetch);
   const due = await store.listDue(now(), limit);
   const results: Array<{ id: string; status: string; error?: string }> = [];
   const queue = [...due];
@@ -72,11 +80,29 @@ export async function tick(deps: SchedulerDeps = {}, limit = 10, concurrency = N
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
-  await anchorPending(deps).catch(() => undefined);
+  for (const a of await anchorPending(deps).catch((e) => [{ runId: "-", anchored: false, error: (e as Error).message }])) if (!a.anchored) console.error(`anchor ${a.runId}:`, a.error);
   await tg.configureBot(deps.fetch).catch(() => undefined);
   installChatHandler(deps);
   await tg.processUpdates(telegramCallback, deps.fetch).catch(() => undefined);
   return results;
+}
+
+/**
+ * An owner with quiet interns: money can arrive two ways. An activation on chain (read every tick from the CREDIT index), or
+ * balance the gateway already holds for the key, e.g. activated on Orbio's own site to a wallet we never saw activate. The
+ * gateway is asked at most every five minutes per owner; either one wakes the quiet interns for the next tick.
+ */
+async function wakeIfFunded(owner: string, at: number, fetchImpl?: typeof fetch) {
+  if ((await syncActivations(owner, fetchImpl)) > 0) return;
+  const k = `gateway.checked.${owner}`;
+  if (at - Number((await store.kvGet(k)) ?? 0) < 5 * 60_000) return;
+  await store.kvSet(k, String(at));
+  const o = await store.getOwner(owner);
+  const live = o?.orbioKey ? await gatewayBalance(o.orbioKey, fetchImpl) : null;
+  if (!live) return;
+  await store.setOwnerBalance(owner, live.availableUsd);
+  // Only new money wakes them: an unchanged small balance would otherwise re-run a quiet check every five minutes.
+  if (live.availableUsd > (o?.orbioBalanceUsd ?? 0) + 0.005) await store.wakeQuietInterns(owner);
 }
 
 /** Free text from a linked Telegram chat, whether it arrives on the webhook or the tick's poll. */
@@ -235,7 +261,10 @@ async function runOneInner(id: string, deps: SchedulerDeps = {}): Promise<{ stat
   const rotated = result.keyEvents.filter((e) => e.kind === "rotated").length;
   if (m.watch?.tripped) result.keyEvents.unshift({ kind: "tripwire", detail: `woke early: ${m.watch.tripped}` });
   // The AI balance is a ledger Intern keeps: every run's cost comes off it the moment the run is recorded.
-  await store.debitOwnerBalance(m.owner, result.costUsd);
+  // A trial-paid run comes off the trial; anything else off the owner's ledger.
+  const trialRun = isTrialKey(result.key?.key);
+  if (trialRun) await addTrialSpend(m.owner, result.costUsd);
+  else await store.debitOwnerBalance(m.owner, result.costUsd);
 
   await recordRun(m.id, now(), {
     id: runId,
@@ -254,7 +283,8 @@ async function runOneInner(id: string, deps: SchedulerDeps = {}): Promise<{ stat
 
   await store.updateIntern(id, {
     status: result.status === "quiet" ? "quiet" : "idle",
-    key: result.key,
+    // The trial key is picked fresh each run and never kept, so it can't outlive the trial.
+    key: trialRun ? null : result.key,
     ...(result.status === "done" && result.output ? { memory: result.output.remember?.slice(0, 1200) || m.memory } : {}),
     // After a run the watch re-baselines to a fresh reading, so what the intern itself just did (a PR it opened, a comment) is not the "activity" that wakes it next.
     ...(m.spec.tripwire ? { watch: { value: (await readMetric(m.spec.tripwire, deps.fetch, ghConn?.data.token).catch(() => null)) ?? m.watch?.value ?? 0, at: now(), tripped: undefined } } : {}),

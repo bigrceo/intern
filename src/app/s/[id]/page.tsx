@@ -113,7 +113,8 @@ export default async function PublicInternPage({ params }: PageProps<"/s/[id]">)
           </div>
         </section>
 
-        {!hidden && <FuelButton internId={m.id} internName={m.name} owner={m.owner} />}
+        {/* Fuel activates CREDIT to the owner's wallet on chain; an Orbio email account has none. */}
+        {!hidden && /^0x[0-9a-f]{40}$/.test(m.owner) && <FuelButton internId={m.id} internName={m.name} owner={m.owner} />}
 
         <Receipts internId={m.id} />
 

@@ -23,6 +23,8 @@ export const BRAND = {
   features: {
     inbox: process.env.NEXT_PUBLIC_GMAIL === "1",
     threads: process.env.NEXT_PUBLIC_THREADS === "1",
+    /** "Continue with Google or email" through Orbio (needs ORBIO_CLIENT_ID / ORBIO_CLIENT_SECRET on the server). */
+    orbioLogin: process.env.NEXT_PUBLIC_ORBIO_LOGIN === "1",
   },
   social: {
     x: process.env.NEXT_PUBLIC_X_URL ?? "",
