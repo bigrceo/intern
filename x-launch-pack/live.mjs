@@ -31,9 +31,6 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900">
   <rect width="1600" height="900" fill="url(#bg)"/><rect width="1600" height="900" fill="url(#glow)"/>
   <circle cx="1210" cy="430" r="380" fill="url(#halo)" opacity=".85"/>
   ${confetti}
-  <rect x="80" y="120" width="214" height="54" rx="27" fill="#1f9d55" fill-opacity=".18" stroke="#4cc27f" stroke-opacity=".6"/>
-  <circle cx="112" cy="147" r="9" fill="#4cc27f"/><circle cx="112" cy="147" r="18" fill="#4cc27f" opacity=".25"/>
-  <text x="136" y="155" font-family="${F}" font-weight="700" font-size="22" fill="#a6f0c4" letter-spacing="3">LIVE NOW</text>
   <text x="72" y="330" font-family="${F}" font-size="148" fill="#ffffff" letter-spacing="-6">Intern</text>
   <text x="72" y="480" font-family="${F}" font-size="148" fill="#8eb69b" letter-spacing="-6">is live.</text>
   <text x="80" y="570" font-family="${F}" font-size="34" fill="#daf1de">Write one sentence. Your intern does the job.</text>
