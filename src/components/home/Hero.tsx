@@ -5,7 +5,6 @@ import { Check } from "../nova/ui/Button";
 import { Reveal } from "../nova/motion/Reveal";
 import { JobInput } from "../job-input";
 import { HeroMock } from "./HeroMock";
-import { TokenStrip } from "../token-strip";
 import { BRAND } from "@/lib/brand";
 
 /** The template hero: two columns, a two-line 48px title, the input as the CTA, three checks, the app mock on the right. */
@@ -40,9 +39,6 @@ export function Hero() {
               <Check>One wallet signature, nothing to install</Check>
               <Check>{marks("A public receipt for every job, on Robinhood Chain")}</Check>
             </div>
-          </Reveal>
-          <Reveal onLoad y={20} delay={0.33}>
-            <div className="mt-7 max-w-[480px]"><TokenStrip /></div>
           </Reveal>
           <Reveal onLoad y={20} delay={0.35}>
             <Link href="#how" className="mt-6 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-pine underline decoration-sage/60 underline-offset-4 hover:decoration-pine">

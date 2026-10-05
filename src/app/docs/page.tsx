@@ -107,7 +107,6 @@ export default function DocsPage() {
             <h2 id="contracts">Addresses</h2>
             <table>
               <tbody>
-                <tr><td>${BRAND.ticker} token</td><td>{BRAND.token ? <Addr a={BRAND.token} kind="token" /> : <em>posted here at launch</em>}</td></tr>
                 <tr><td>Receipts wallet</td><td><Addr a={ANCHOR_WALLET} /></td></tr>
                 <tr><td>Anchor address</td><td><Addr a={ANCHOR_TO} /></td></tr>
                 <tr><td>$ORBIO token</td><td><Addr a={ORBIO.orbio} kind="token" /></td></tr>
@@ -116,7 +115,6 @@ export default function DocsPage() {
                 <tr><td>Chain</td><td>{marks("Robinhood Chain", 14)} (chain id {ORBIO.chainId})</td></tr>
               </tbody>
             </table>
-            <p>Other tokens named {BRAND.name} may exist. The address above is the only official one.</p>
 
             <h2 id="api">Public API</h2>
             <p>Read-only, no key needed:</p>

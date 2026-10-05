@@ -1,6 +1,5 @@
 import { Nav } from "@/components/nav";
 import { Hero } from "@/components/home/Hero";
-import { TokenCA } from "@/components/token-ca";
 import { Steps } from "@/components/home/Steps";
 import { UseCases } from "@/components/usecases";
 import { Rails } from "@/components/rails";
@@ -16,7 +15,6 @@ export default function Home() {
       <Nav />
       <main>
         <Hero />
-        <TokenCA />
         <Steps />
         <UseCases />
         <Rails />
