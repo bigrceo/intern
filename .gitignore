@@ -50,3 +50,5 @@ deploy/.env
 .cron-secret
 .anchor-key
 x-launch-pack/fonts/
+video/ad/node_modules/
+video/ad/stills/
