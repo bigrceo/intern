@@ -49,3 +49,4 @@ public/__wallet_stub.js
 deploy/.env
 .cron-secret
 .anchor-key
+x-launch-pack/fonts/

@@ -27,7 +27,7 @@ export function TokenCA() {
       <div className="card-shadow rounded-card bg-white p-6 sm:p-8">
         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between">
           <p className="eyebrow">${BRAND.ticker} · official contract · {marks("Robinhood Chain", 12)}</p>
-          <p className="text-[13px] text-ink-faint">{INTERN_CA ? "Trading on Uniswap" : "Launching soon"}</p>
+          <p className="text-[13px] text-ink-faint">{INTERN_CA ? BRAND.market : "Launching soon on Pons"}</p>
         </div>
 
         <button
