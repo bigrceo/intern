@@ -21,7 +21,7 @@ export function Rails() {
               Nothing to install.
             </h2>
             <p className="mt-5 max-w-[30rem] text-[15px] leading-[1.6] text-text">
-              {marks(`Orbio pays for the work, Robinhood Chain keeps the receipts, and your ${BRAND.noun} works through apps you already use: Gmail, GitHub, Telegram, Discord and X, one click each. Anything that speaks for you waits for your OK.`)}
+              {marks(`Burned $INTERN pays for the work, Solana keeps the receipts, and your ${BRAND.noun} works through apps you already use: Gmail, GitHub, Telegram, Discord and X, one click each. Anything that speaks for you waits for your OK.`)}
             </p>
             <p className="mt-6 text-[12.5px] text-muted">Drag the tiles. They&apos;re real; the connections are one tap each.</p>
           </div>

@@ -2,9 +2,10 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth";
+import { SOL_CHAIN, useAuth } from "@/lib/auth";
+import { BurnPanel } from "@/components/burn-panel";
 import { api, timeAgo, type ConnectionKind, type Connections, type OrbioStatus } from "@/lib/api";
-import { DiscordMark, GitHubMark, GmailMark, OrbioMark, TelegramMark, XMark } from "@/components/marks";
+import { DiscordMark, GitHubMark, GmailMark, OrbioMark, SolanaMark, TelegramMark, XMark } from "@/components/marks";
 import { ArrowRight, ChevronUp, Ellipsis } from "lucide-react";
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
@@ -74,7 +75,22 @@ function ConnectionsInner() {
 
         <div className="mt-5 grid gap-3">
           {[
-            {
+            ...(SOL_CHAIN ? [{
+              key: "orbio",
+              on: (orbio?.burnCreditUsd ?? 0) > 0,
+              node: (
+                <Shell
+                  mark={<SolanaMark size={20} />}
+                  name={`$${BRAND.ticker} · AI credit`}
+                  blurb={`The budget. Burn $${BRAND.ticker} from your Solana wallet and get its market value in AI credit; runs bill that credit at the model's real price. Intern never holds your tokens or your keys.`}
+                  unlocks="AI credit for every run, plan and reply"
+                  conn={(orbio?.burnCreditUsd ?? 0) > 0 ? { label: `$${(orbio?.burnCreditUsd ?? 0).toFixed(2)} credit`, createdAt: 0 } : undefined}
+                >
+                  <div className="mt-2"><BurnPanel creditUsd={orbio?.burnCreditUsd} onCredited={() => void load()} /></div>
+                </Shell>
+              ),
+            }] : [])
+            ,...(SOL_CHAIN ? [] : [{
               key: "orbio",
               on: !!orbio?.approved,
               node: orbio?.oauth ? (
@@ -126,7 +142,7 @@ function ConnectionsInner() {
                       {orbio.orbio.activations.length > 0 && (
                         <ul className="mt-1 grid gap-0.5 font-mono text-[11px] text-ink-faint">
                           {orbio.orbio.activations.map((a) => (
-                            <li key={`${a.txHash}-${a.activationId}`}>+{a.amountUsd.toFixed(2)} · <a className="underline" href={`https://robinhoodchain.blockscout.com/tx/${a.txHash}`} target="_blank" rel="noreferrer">{a.txHash.slice(0, 10)}…</a> · verified on chain · {timeAgo(a.at)}</li>
+                            <li key={`${a.txHash}-${a.activationId}`}>+{a.amountUsd.toFixed(2)} · <a className="underline" href={`https://solscan.io/tx/${a.txHash}`} target="_blank" rel="noreferrer">{a.txHash.slice(0, 10)}…</a> · verified on chain · {timeAgo(a.at)}</li>
                           ))}
                         </ul>
                       )}
@@ -134,7 +150,7 @@ function ConnectionsInner() {
                   )}
                 </Shell>
               ),
-            },
+            }]),
             { key: "telegram", on: !!has("telegram"), node: <TelegramCard owner={address} conn={has("telegram")} available={data.available.telegram} bot={data.available.telegramBot} onChange={load} setErr={setErr} /> },
             ...(BRAND.features.inbox || has("gmail") ? [{ key: "gmail", on: !!has("gmail"), node: <GmailCard owner={address} conn={has("gmail")} oauth={data.available.gmailOAuth} onChange={load} /> }] : []),
             { key: "discord", on: !!has("discord"), node: <DiscordCard owner={address} conn={has("discord")} onChange={load} setErr={setErr} /> },

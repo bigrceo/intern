@@ -12,7 +12,7 @@ export function ownerFrom(req: Request, _opts: { write?: boolean } = {}): string
   if (session) return session;
   if (process.env.ALLOW_HEADER_AUTH !== "1" && process.env.NODE_ENV === "production") return null;
   const h = req.headers.get("x-owner")?.trim().toLowerCase();
-  return h && /^0x[0-9a-f]{40}$/.test(h) ? h : null;
+  return h && (/^0x[0-9a-f]{40}$/.test(h) || /^[1-9a-z]{32,44}$/.test(h)) ? h : null;
 }
 
 export const bad = (msg: string, status = 400) => NextResponse.json({ error: msg }, { status });

@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const EXAMPLES = [
-  "Ping me if $ORBIO liquidity moves 10%.",
-  "Every morning, tell me what moved on Robinhood Chain and why.",
-  "At 9pm, five bullets from https://www.orbio.so/build.",
+  "Ping me if $INTERN liquidity moves 10%.",
+  "Every morning, tell me what moved on Solana and why.",
+  "At 9pm, five bullets on what moved in Solana memecoins today.",
 ];
 
 export function JobInput({ id = "job" }: { id?: string } = {}) {

@@ -19,7 +19,7 @@ export async function FinalCta() {
           <Mascot size={110} pose="float" className="h-[96px] w-auto shrink-0" />
           <p className="text-[15px] leading-[1.4] text-ink">
             <span className="font-medium">The sky is just opening.</span>
-            <span className="block text-[13.5px] text-text">{marks("Every intern is paid for by a bag of $ORBIO. Launch one and it shows up here first.", 13)}</span>
+            <span className="block text-[13.5px] text-text">{marks("Every intern is paid for by burned $INTERN. Launch one and it shows up here first.", 13)}</span>
           </p>
           </div>
           <div className="flex gap-2">
@@ -42,7 +42,7 @@ export async function FinalCta() {
           </span>
           <p className="text-[15px] leading-[1.4] text-ink">
             <span className="font-medium">{live.length} {live.length === 1 ? BRAND.noun : BRAND.nounPlural}</span> in the sky{working > 0 && <>, <span className="font-medium">{working}</span> working right now</>}.
-            <span className="block text-[13.5px] text-text">{marks("Every one of them is paid for by a bag of $ORBIO.", 13)}</span>
+            <span className="block text-[13.5px] text-text">{marks("Every one of them is paid for by burned $INTERN.", 13)}</span>
           </p>
         </div>
         <Button href="/sky" variant="outline">Meet them</Button>

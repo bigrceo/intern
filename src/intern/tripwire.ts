@@ -33,6 +33,11 @@ export async function readRepoActivity(repo: string, token: string | undefined, 
 
 export async function readMetric(t: Tripwire, fetchImpl: typeof fetch = fetch, token?: string): Promise<number | null> {
   if (t.metric === "repo_activity") return readRepoActivity(t.target, token, fetchImpl);
+  if (t.metric === "wallet_balance" && process.env.NEXT_PUBLIC_CHAIN === "solana") {
+    const r = await fetchImpl(process.env.RPC_URL || "https://api.mainnet-beta.solana.com", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [t.target] }), signal: AbortSignal.timeout(10_000) });
+    const j = (await r.json().catch(() => ({}))) as { result?: { value?: number } };
+    return typeof j.result?.value === "number" ? j.result.value / 1e9 : null;
+  }
   if (t.metric === "wallet_balance") {
     const r = await fetchImpl(RH_RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [t.target, "latest"] }), signal: AbortSignal.timeout(10_000) });
     const j = (await r.json().catch(() => ({}))) as { result?: string };
@@ -41,7 +46,7 @@ export async function readMetric(t: Tripwire, fetchImpl: typeof fetch = fetch, t
   const r = await fetchImpl(`${DEXSCREENER}/latest/dex/search?q=${encodeURIComponent(t.target)}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
   if (!r.ok) return null;
   const j = (await r.json().catch(() => ({}))) as { pairs?: Array<Record<string, unknown>> };
-  const pairs = (j.pairs ?? []).filter((p) => p.chainId === "robinhood");
+  const pairs = (j.pairs ?? []).filter((p) => p.chainId === (process.env.NEXT_PUBLIC_CHAIN === "solana" ? "solana" : "robinhood"));
   const pool = pairs.sort((a, b) => Number((b.liquidity as { usd?: number })?.usd ?? 0) - Number((a.liquidity as { usd?: number })?.usd ?? 0))[0];
   if (!pool) return null;
   // Zero is a reading (a drained pool is exactly the alert), missing data is null.

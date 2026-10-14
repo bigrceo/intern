@@ -15,9 +15,9 @@ export default function Privacy() {
 
       <h2>What we store about you</h2>
       <ul>
-        <li><strong>Your wallet address</strong> and the $ORBIO balance we read from Robinhood Chain. The address is your account identifier; there is no email sign-up and no password.</li>
+        <li><strong>Your wallet address</strong> and the $ORBIO balance we read from Solana. The address is your account identifier; there is no email sign-up and no password.</li>
         <li><strong>Your Orbio key</strong>: the signature your wallet makes over Orbio&apos;s key message, stored encrypted. It is the credential your interns bill inference to; it cannot move tokens or sign anything else. We also record the CREDIT activations you make from your wallet (transaction hash and amount, read from the chain) to keep the balance estimate. We never hold your wallet&apos;s private key and never move tokens.</li>
-        <li><strong>The jobs you write</strong> (one sentence each, plus the plan compiled from it) and <strong>every run&apos;s output</strong>: title, summary, body, sources, cost, model, and a hash of the output that is written to Robinhood Chain. Run outputs are public on each intern&apos;s page and on <a href="/sky">the sky</a>; do not put secrets in a job.</li>
+        <li><strong>The jobs you write</strong> (one sentence each, plus the plan compiled from it) and <strong>every run&apos;s output</strong>: title, summary, body, sources, cost, model, and a hash of the output that is written to Solana. Run outputs are public on each intern&apos;s page and on <a href="/sky">the sky</a>; do not put secrets in a job.</li>
         <li><strong>Connections you make</strong> under Connections: Telegram chat id, Discord webhook URL, GitHub access token, Google OAuth tokens, X keys. These are encrypted at rest with a server-side key and are only ever used by your own interns. Disconnecting deletes them immediately.</li>
         <li><strong>Files</strong> an intern writes for you (PDF, DOCX, text) or saves from your email, downloadable only by you.</li>
         <li><strong>Drafts awaiting your approval</strong> (a pull request, a post, an email) with your decision and the result.</li>
@@ -45,7 +45,7 @@ export default function Privacy() {
       <p>One session cookie (<span className="font-mono text-[13px]">intern_session</span>) signed by us, so the app knows which wallet you are. No analytics or tracking cookies.</p>
 
       <h2>Retention and deletion</h2>
-      <p>Connections are deleted the moment you disconnect. Interns, runs and files stay while your interns exist; delete an intern and its runs and files go with it. Hashes already written to Robinhood Chain cannot be removed; they contain no content, only a fingerprint. To delete your account entirely, ask in your linked Telegram chat (the bot knows which wallet you are), or open an issue on GitHub naming the wallet.</p>
+      <p>Connections are deleted the moment you disconnect. Interns, runs and files stay while your interns exist; delete an intern and its runs and files go with it. Hashes already written to Solana cannot be removed; they contain no content, only a fingerprint. To delete your account entirely, ask in your linked Telegram chat (the bot knows which wallet you are), or open an issue on GitHub naming the wallet.</p>
 
       <h2>Security</h2>
       <p>Secrets are encrypted at rest and only decrypted on the server for the run that needs them. Traffic is HTTPS. Anything an intern wants to do outside reading is drafted and waits for your approval unless you turned autopilot on. Inbox and private-repo work is published as a receipt (hash, cost, time) only; the words stay with you.</p>

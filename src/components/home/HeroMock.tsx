@@ -14,9 +14,9 @@ import { BRAND } from "@/lib/brand";
  * calls ticking in, then the receipt. Loops every nine seconds; static under reduced motion (motion handles it).
  */
 const TOOLS = [
-  { name: "Checked the market", detail: "$ORBIO price, liquidity, volume" },
+  { name: "Checked the market", detail: "$INTERN price, liquidity, volume" },
   { name: "Read the chain", detail: "big transfers in the last 12h" },
-  { name: "Searched the web", detail: "Orbio staking news" },
+  { name: "Searched the web", detail: "Solana memecoin news" },
   { name: "Sent the report", detail: "to your Telegram" },
 ];
 
@@ -33,13 +33,13 @@ export function HeroMock() {
       <div className="flex items-center gap-3 border-b border-line-soft px-4 py-3">
         <Face n={4} size={30} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-medium text-ink">Sentry · ORBIO watch</p>
+          <p className="truncate text-[13.5px] font-medium text-ink">Sentry · $INTERN watch</p>
           <p className="truncate text-[11.5px] text-muted">every 12 hours · max 5¢ a job</p>
         </div>
         <Chip tone={done ? "green" : "mint"}>{done ? "done" : "working"}</Chip>
       </div>
       <div className="flex-1 px-4 py-4">
-        <p className="rounded-[10px] bg-mint-2 px-3 py-2.5 text-[12.5px] leading-snug text-pine">{marks("“Watch $ORBIO price and liquidity, big transfers, and tell me only what moved.”", 13)}</p>
+        <p className="rounded-[10px] bg-mint-2 px-3 py-2.5 text-[12.5px] leading-snug text-pine">{marks("“Watch $INTERN price and liquidity, big transfers, and tell me only what moved.”", 13)}</p>
         <ul className="mt-3 space-y-1.5">
           <AnimatePresence initial={false}>
             {TOOLS.slice(0, tools).map((t) => (
@@ -61,7 +61,7 @@ export function HeroMock() {
           {done && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ type: "spring", bounce: 0, duration: 0.5 }} className="mt-4 rounded-[12px] ring-1 ring-line">
               <div className="px-3.5 py-3">
-                <p className="text-[13.5px] font-medium text-ink">Liquidity up 11.4% after a 220k ORBIO add</p>
+                <p className="text-[13.5px] font-medium text-ink">Liquidity up 11.4% after a 2.1M INTERN add</p>
                 <p className="mt-1 text-[12px] leading-snug text-text">Price flat at $0.0412; one wallet added liquidity on both sides. Its guess for next time: liquidity stays above $1.2M.</p>
               </div>
               <div className="grid grid-cols-4 gap-2 border-t border-line-soft px-3.5 py-2.5 text-[10.5px] text-muted">

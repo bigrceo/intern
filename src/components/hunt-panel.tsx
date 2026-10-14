@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 type MineRun = { runId: string; internId: string; intern: string; at: number; answer: string; anchored: boolean; txHash: string | null; entered: boolean };
 type Mine = { runs: MineRun[]; grant: { status: string; txHash: string | null; amount: number } | null };
 
-const TX = "https://robinhoodchain.blockscout.com/tx/";
+const TX = "https://solscan.io/tx/";
 
 /** Ticks down to a moment; "0s" once it has passed. */
 export function HuntCountdown({ to, label }: { to: number; label: string }) {

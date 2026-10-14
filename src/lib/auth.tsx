@@ -15,7 +15,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api } from "./api";
 
-type Saved = { address: string | null; signed: boolean; kind?: "wallet" | "orbio"; label?: string };
+type Saved = { address: string | null; signed: boolean; kind?: "wallet" | "orbio"; label?: string; real?: string };
 type AuthState = Pick<Saved, "address" | "signed"> & { ready: boolean; orbioApproved: boolean; orbioChecked: boolean };
 
 type Auth = AuthState & {
@@ -68,7 +68,95 @@ const SERVER: Saved = { address: null, signed: false };
 type Eip1193 = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown>; isMetaMask?: boolean; isRabby?: boolean; isRobinhood?: boolean; providers?: Eip1193[] };
 const injected = () => (typeof window !== "undefined" ? (window as unknown as { ethereum?: Eip1193 }).ethereum : undefined);
 
-export type WalletId = "metamask" | "rabby" | "robinhood" | "walletconnect" | "injected";
+export type WalletId = "metamask" | "rabby" | "robinhood" | "walletconnect" | "injected" | SolWalletId;
+export type SolWalletId = "phantom" | "solflare" | "backpack";
+
+/* ── Solana wallets ─────────────────────────────────────────────────────────────────────────────────────── */
+type SolProvider = {
+  publicKey?: { toBase58(): string } | null;
+  connect: () => Promise<{ publicKey?: { toBase58(): string } } | void>;
+  signMessage: (m: Uint8Array, enc?: string) => Promise<{ signature: Uint8Array } | Uint8Array>;
+  signAndSendTransaction?: (tx: unknown) => Promise<{ signature: string } | string>;
+  signTransaction?: (tx: unknown) => Promise<{ serialize(): Uint8Array }>;
+};
+export const SOL_CHAIN = process.env.NEXT_PUBLIC_CHAIN === "solana";
+export const isSolWallet = (w?: WalletId): w is SolWalletId => w === "phantom" || w === "solflare" || w === "backpack";
+function solProvider(w?: SolWalletId): SolProvider | undefined {
+  if (typeof window === "undefined") return undefined;
+  const x = window as unknown as { phantom?: { solana?: SolProvider }; solflare?: SolProvider; backpack?: SolProvider; solana?: SolProvider };
+  if (w === "phantom") return x.phantom?.solana;
+  if (w === "solflare") return x.solflare;
+  if (w === "backpack") return x.backpack;
+  return x.phantom?.solana ?? x.solflare ?? x.backpack ?? x.solana;
+}
+let activeSol: SolProvider | null = null;
+export function detectSolWallets(): SolWalletId[] {
+  return (["phantom", "solflare", "backpack"] as SolWalletId[]).filter((w) => !!solProvider(w));
+}
+async function solSignIn(p: SolProvider): Promise<string> {
+  const res = await p.connect();
+  const pk = (res && "publicKey" in res ? res.publicKey : null) ?? p.publicKey;
+  const address = pk?.toBase58() ?? "";
+  if (!address) throw new Error("No account was shared. Unlock your wallet and try again.");
+  const nr = await fetch("/api/auth/nonce", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address }) });
+  const body = (await nr.json()) as { nonce?: string; message?: string; error?: string };
+  if (!nr.ok || !body.nonce || !body.message) throw new Error(body.error ?? "Could not start sign-in.");
+  const { nonce, message } = body;
+  const out = await p.signMessage(new TextEncoder().encode(message), "utf8");
+  const sig = out instanceof Uint8Array ? out : out.signature;
+  const bs58 = (await import("bs58")).default;
+  const vr = await fetch("/api/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ address, message, signature: bs58.encode(sig), nonce }) });
+  if (!vr.ok) throw new Error(((await vr.json().catch(() => ({}))) as { error?: string }).error ?? "The signature wasn't accepted. Try again.");
+  activeSol = p;
+  return address;
+}
+
+/**
+ * Burn `tokens` whole $INTERN from the connected Solana wallet (burnChecked, Token or Token-2022), then ask the server to
+ * credit it. Resolves the signature and the credit added.
+ */
+export async function burnForCredit(tokens: number, wallet?: SolWalletId): Promise<{ sig: string; creditUsd: number }> {
+  const mint = process.env.NEXT_PUBLIC_TOKEN_ADDRESS;
+  if (!mint) throw new Error("The token isn't live yet.");
+  const p = activeSol ?? solProvider(wallet);
+  if (!p) throw new Error("Open this page in Phantom, Solflare or Backpack.");
+  const web3 = await import("@solana/web3.js");
+  const spl = await import("@solana/spl-token");
+  const conn = new web3.Connection(`${window.location.origin}/api/rpc`, { commitment: "confirmed", disableRetryOnRateLimit: false });
+  const res = await p.connect();
+  const owner = new web3.PublicKey(((res && "publicKey" in res ? res.publicKey : null) ?? p.publicKey)!.toBase58());
+  const mintPk = new web3.PublicKey(mint);
+  const info = await conn.getAccountInfo(mintPk);
+  if (!info) throw new Error("Couldn't read the token. Try again in a moment.");
+  const programId = info.owner;
+  const m = await spl.getMint(conn, mintPk, "confirmed", programId);
+  const ata = spl.getAssociatedTokenAddressSync(mintPk, owner, false, programId);
+  const raw = BigInt(Math.floor(tokens * 10 ** m.decimals));
+  if (raw <= 0n) throw new Error("Pick an amount to burn.");
+  const tx = new web3.Transaction().add(spl.createBurnCheckedInstruction(ata, mintPk, owner, raw, m.decimals, [], programId));
+  tx.feePayer = owner;
+  tx.recentBlockhash = (await conn.getLatestBlockhash("confirmed")).blockhash;
+  let sig: string;
+  if (p.signAndSendTransaction) {
+    const r = await p.signAndSendTransaction(tx);
+    sig = typeof r === "string" ? r : r.signature;
+  } else if (p.signTransaction) {
+    const signed = await p.signTransaction(tx);
+    sig = await conn.sendRawTransaction(signed.serialize());
+  } else throw new Error("This wallet can't send transactions from the page.");
+  // Poll the status (no websocket through the proxy): up to ~40s.
+  for (let i = 0; i < 20; i++) {
+    const st = await conn.getSignatureStatuses([sig]).catch(() => null);
+    const v = st?.value?.[0];
+    if (v?.err) throw new Error("The burn transaction failed on chain.");
+    if (v?.confirmationStatus === "confirmed" || v?.confirmationStatus === "finalized") break;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  const r = await fetch("/api/burn", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ sig }) });
+  const j = (await r.json().catch(() => ({}))) as { creditUsd?: number; error?: string };
+  if (!r.ok) throw new Error(j.error ?? "The burn went through, but crediting it failed. It will be retried from your burns list.");
+  return { sig, creditUsd: j.creditUsd ?? 0 };
+}
 
 /**
  * EIP-6963: every wallet extension announces itself with an rdns, so we can
@@ -143,6 +231,9 @@ async function ensureRobinhoodChain(eth: Eip1193) {
 }
 
 function walletName(id?: WalletId) {
+  if (id === "phantom") return "Phantom";
+  if (id === "solflare") return "Solflare";
+  if (id === "backpack") return "Backpack";
   return id === "metamask" ? "MetaMask" : id === "rabby" ? "Rabby" : id === "robinhood" ? "Robinhood Wallet" : id === "walletconnect" ? "WalletConnect" : "a browser wallet";
 }
 
@@ -253,6 +344,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [hydrated, saved.address, orbio.for, refreshOrbio]);
 
   const connect = useCallback(async (wallet?: WalletId) => {
+    if (isSolWallet(wallet) || (SOL_CHAIN && !wallet)) {
+      const p = solProvider(isSolWallet(wallet) ? wallet : undefined);
+      if (!p) throw new Error(`${wallet ? walletName(wallet) : "A Solana wallet"} isn't available in this browser. Install Phantom, or open this page inside your wallet app.`);
+      const real = await solSignIn(p);
+      const address = real.toLowerCase();
+      write({ address, signed: true, label: `${real.slice(0, 4)}…${real.slice(-4)}`, real });
+      return address;
+    }
     let eth = wallet === "walletconnect" ? await walletConnectProvider() : wallet ? providerFor(wallet) : injected();
     if (!eth && (wallet === "metamask" || !wallet)) eth = await metamaskSdkProvider();
     if (!eth) {
@@ -365,6 +464,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
+
+/** The wallet address with its real casing (Solana addresses are case-sensitive; owner ids are lowercased). */
+export const realAddress = () => (typeof window === "undefined" ? null : read().real ?? read().address);
 
 export function useAuth(): Auth {
   const v = useContext(Ctx);

@@ -108,3 +108,31 @@ export function sessionFrom(req: Request): string | null {
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`));
   return openSession(m?.[1]);
 }
+
+/* ── Solana wallets (Phantom, Solflare, Backpack): a plain message signed with ed25519. ── */
+import { PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
+import nacl from "tweetnacl";
+
+export function isSolAddress(a: unknown): a is string {
+  try { return typeof a === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) && new PublicKey(a).toBase58() === a; } catch { return false; }
+}
+
+/** The exact message a Solana wallet signs to sign in; the server rebuilds and compares it, byte for byte. */
+export function solMessage(p: { domain: string; address: string; nonce: string; issuedAt: string }) {
+  return `${p.domain} wants you to sign in with your Solana account:\n${p.address}\n\nSign in to Intern. This signature sends no transaction and costs nothing.\n\nNonce: ${p.nonce}\nIssued At: ${p.issuedAt}`;
+}
+
+export function verifySol(p: { message: string; signature: string; address: string; expectedNonce: string; expectedDomain: string }) {
+  if (!isSolAddress(p.address)) return false;
+  const lines = p.message.split("\n");
+  const domain = lines[0]?.match(/^(\S+) wants you to sign in with your Solana account:$/)?.[1];
+  if (!domain || domain !== p.expectedDomain || lines[1] !== p.address) return false;
+  const issued = lines.find((l) => l.startsWith("Issued At: "))?.slice(11) ?? "";
+  if (p.message !== solMessage({ domain, address: p.address, nonce: p.expectedNonce, issuedAt: issued })) return false;
+  const t = Date.parse(issued);
+  if (!Number.isFinite(t) || Math.abs(Date.now() - t) > 10 * 60_000) return false;
+  let sig: Uint8Array;
+  try { sig = p.signature.startsWith("0x") ? Buffer.from(p.signature.slice(2), "hex") : bs58.decode(p.signature); } catch { return false; }
+  return sig.length === 64 && nacl.sign.detached.verify(new TextEncoder().encode(p.message), sig, new PublicKey(p.address).toBytes());
+}

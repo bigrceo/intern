@@ -55,7 +55,7 @@ export function FuelButton({ internId, internName, owner }: { internId: string; 
         <div className="min-w-0">
           <h2 className="flex items-center gap-1.5 text-[13.5px] font-semibold text-ink"><Flame size={14} strokeWidth={2.2} className="text-gold-deep" /> Fuel {internName}</h2>
           <p className="mt-1 max-w-[36rem] text-[12.5px] leading-[1.55] text-ink-soft">
-            Like what it does? Burn a little of your own CREDIT into its balance. One signature from your wallet; the receipt lands on Robinhood Chain and here. It keeps running, and your address is on the record as the one who kept it running.
+            Like what it does? Burn a little of your own CREDIT into its balance. One signature from your wallet; the receipt lands on Solana and here. It keeps running, and your address is on the record as the one who kept it running.
           </p>
         </div>
         {!open ? (

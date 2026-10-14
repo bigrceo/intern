@@ -12,7 +12,7 @@ import type { JobSpec } from "@/intern/spec";
  * the trial and never leaves the trial key on the intern; the trial ends at its credit and at its expiry.
  */
 
-const T0 = Date.parse("2026-10-05T12:00:00Z");
+const T0 = Date.now() - 3_600_000; // relative, so the 7-day trial is still running whenever the suite runs
 const KEY = "sk-orbio-TRIALKEY";
 const cfg = (over: Partial<TrialConfig> = {}): TrialConfig => ({ key: KEY, creditUsd: 5, days: 7, start: T0 - 3600_000, until: Infinity, maxAccounts: 3, dailyAccounts: 2, bonusUsd: 0, bonusUntil: 0, ...over });
 let dev = 0;

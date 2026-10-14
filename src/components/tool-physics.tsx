@@ -172,7 +172,7 @@ export function ToolPhysics({ className }: { className?: string }) {
   return (
     <div
       ref={host}
-      aria-label="Tiles for intern, Gmail, GitHub, Telegram, Discord, Orbio, OpenRouter and Robinhood Chain"
+      aria-label="Tiles for intern, Gmail, GitHub, Telegram, Discord, Orbio, OpenRouter and Solana"
       role="img"
       className={`${className ?? ""} [&>canvas]:absolute [&>canvas]:inset-0 [&>canvas]:cursor-grab [&>canvas]:active:cursor-grabbing`}
     />

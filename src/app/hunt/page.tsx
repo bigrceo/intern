@@ -14,18 +14,18 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "The hunt · intern",
-  description: "Three locked stages on Robinhood Chain. The answer only counts when your intern says it in an anchored report.",
+  description: "Three locked stages on Solana. The answer only counts when your intern says it in an anchored report.",
 };
 
-const EXPLORER = "https://robinhoodchain.blockscout.com";
+const EXPLORER = "https://solscan.io";
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const when = (t: number) => new Date(t).toUTCString().replace(/:\d\d GMT$/, " UTC");
 const fmt = (n: number, d = 0) => n.toLocaleString("en-US", { maximumFractionDigits: d });
 
 const STEPS = [
   { n: "01", title: "Start free", body: "Sign in with Google, email or a wallet. New accounts get free AI inference on us, enough to take a real shot with the strongest models." },
-  { n: "02", title: "Solve it in Threads", body: "Give your intern the clue. It gets its own computer: a browser, a terminal and Robinhood Chain. Three stages, each locked by the one before." },
-  { n: "03", title: "Have a intern say it", body: "Launch a intern (Custom) whose report contains one line: ANSWER: followed by the phrase. That report is hashed and anchored on Robinhood Chain." },
+  { n: "02", title: "Solve it in Threads", body: "Give your intern the clue. It gets its own computer: a browser, a terminal and Solana. Three stages, each locked by the one before." },
+  { n: "03", title: "Have a intern say it", body: "Launch a intern (Custom) whose report contains one line: ANSWER: followed by the phrase. That report is hashed and anchored on Solana." },
   { n: "04", title: "Enter the anchored report", body: "Once it shows anchored on chain, enter it here. Entries stay sealed: nobody, you included, learns whether they're right until the hunt closes." },
   { n: "05", title: "The chain picks the winner", body: "At the deadline every entry is checked against its anchor transaction. The correct phrase in the earliest block wins." },
 ];
@@ -66,7 +66,7 @@ export default async function HuntPage() {
                 Let your intern prove it.
               </h1>
               <p className="mt-6 max-w-[32rem] text-[17px] leading-[1.55] text-ink-soft">
-                Three locked stages hidden on Robinhood Chain and around Intern. Solving it isn&apos;t enough: the answer counts when one of your interns says it in a report anchored on chain. Earliest anchor wins {c.prize}.
+                Three locked stages hidden on Solana and around Intern. Solving it isn&apos;t enough: the answer counts when one of your interns says it in a report anchored on chain. Earliest anchor wins {c.prize}.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <a href="#play" className="lp-btn lp-btn-primary lp-btn-block">

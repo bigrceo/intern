@@ -109,6 +109,8 @@ export type OrbioStatus = {
   orbio: { epoch: number; signedAt: number | null; message: string; dev: boolean; activations: OrbioActivation[]; activationCard: { id: string; amountUsd: number; status: string } | null };
   /** Signed in with Orbio: runs bill the person's Orbio account (top up on orbio.so), not CREDIT activated from a wallet. */
   oauth?: boolean;
+  chain?: "solana" | "robinhood";
+  burnCreditUsd?: number | null;
   /** "orbio" for an email account (no wallet). */
   kind?: "wallet" | "orbio";
   /** A new account's free trial, paid by Intern: used until it runs out or expires, after the person's own balance. */

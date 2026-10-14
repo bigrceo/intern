@@ -25,7 +25,7 @@ export function Hero({ freeUsd = 0 }: { freeUsd?: number }) {
           </Reveal>
           <Reveal onLoad y={20} delay={0.1}>
             <p className="mt-5 max-w-[460px] text-[16px] leading-[1.6] text-text">
-              {marks(`Write what you want in one sentence. An AI ${BRAND.noun} does it for you around the clock, paid by what your staked $ORBIO earns. No card, nothing to set up. Sell the bag and it stops.${freeUsd > 0 ? ` Start free with $${freeUsd} of AI on us.` : ""}`, 15)}
+              {marks(`Write what you want in one sentence. An AI ${BRAND.noun} does it for you around the clock, paid for by burning a little of your $INTERN bag. No card, nothing to set up. Sell the bag and it stops.${freeUsd > 0 ? ` Start free with $${freeUsd} of AI on us.` : ""}`, 15)}
             </p>
           </Reveal>
           <Reveal onLoad y={20} delay={0.2}>
@@ -35,9 +35,9 @@ export function Hero({ freeUsd = 0 }: { freeUsd?: number }) {
           </Reveal>
           <Reveal onLoad y={20} delay={0.3}>
             <div className="mt-8 flex flex-col gap-3">
-              <Check>{marks("Paid by your $ORBIO, never by your card")}</Check>
-              <Check>One wallet signature, nothing to install</Check>
-              <Check>{marks("A public receipt for every job, on Robinhood Chain")}</Check>
+              <Check>{marks("Paid by burning $INTERN, never by your card")}</Check>
+              <Check>{marks("One Solana wallet signature, nothing to install")}</Check>
+              <Check>{marks("A public receipt for every job, on Solana")}</Check>
             </div>
           </Reveal>
           {freeUsd > 0 && (

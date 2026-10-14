@@ -231,7 +231,7 @@ function NewInner() {
               <li className="flex items-center justify-between gap-3 rounded-lg border border-ink/10 bg-paper p-3.5">
                 <div className="min-w-0">
                   <p className="text-[14px] font-semibold text-ink">Public page</p>
-                  <p className="text-[12.5px] text-ink-soft">{marks("Anyone can watch it work. Every run is hashed; anchoring on Robinhood Chain follows when it is switched on.", 12)}</p>
+                  <p className="text-[12.5px] text-ink-soft">{marks("Anyone can watch it work. Every run is hashed; anchoring on Solana follows when it is switched on.", 12)}</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-moss/10 px-2 py-0.5 text-[11px] font-medium text-moss">always</span>
               </li>
@@ -430,7 +430,7 @@ function SpecEditor({ spec, onChange, compiled }: { spec: JobSpec; onChange: (s:
         )}
         <label className="block sm:col-span-2"><span className={label}>Objective</span><textarea value={spec.objective} rows={2} maxLength={400} onChange={(e) => set("objective", e.target.value)} className={`${field} resize-none`} /></label>
         <label className="block sm:col-span-2"><span className={label}>Checks every run (one per line)</span>
-          <textarea value={(spec.checks ?? []).join("\n")} rows={Math.max(2, Math.min(6, (spec.checks ?? []).length + 1))} onChange={(e) => set("checks", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 6))} placeholder={"$ORBIO price, liquidity and volume vs last run\nTransfers in/out of wallet 0x… since last run\nNew pools on Robinhood Chain"} className={`${field} resize-none`} />
+          <textarea value={(spec.checks ?? []).join("\n")} rows={Math.max(2, Math.min(6, (spec.checks ?? []).length + 1))} onChange={(e) => set("checks", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 6))} placeholder={"$ORBIO price, liquidity and volume vs last run\nTransfers in/out of wallet 0x… since last run\nNew pools on Solana"} className={`${field} resize-none`} />
           <span className="mt-1 block text-[12px] text-ink-faint">It works through these in order each cycle, remembers what it saw, and reports one section per check.</span>
         </label>
         <label className="block sm:col-span-2"><span className={label}>Sources (one per line)</span>

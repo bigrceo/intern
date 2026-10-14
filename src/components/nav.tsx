@@ -15,7 +15,6 @@ const links = [
   { href: "/#use-cases", label: "What it does" },
   { href: "/sky", label: "The sky" },
   { href: "/docs", label: "Docs" },
-  { href: "https://www.orbio.so", label: "Orbio" },
 ];
 
 /**

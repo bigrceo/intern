@@ -11,13 +11,18 @@ import { BrandMark } from "@/components/logo";
 import { DitherField } from "@/components/dither-field";
 import { DitherMark } from "@/components/dither-mark";
 import { BRAND } from "@/lib/brand";
-import { MetaMaskMark, OpenRouterMark, OrbioMark, RabbyMark, RobinhoodMark, WalletConnectMark } from "@/components/marks";
-import { detectWallets, type WalletId } from "@/lib/auth";
+import { MetaMaskMark, OpenRouterMark, OrbioMark, RabbyMark, RobinhoodMark, SolanaMark, PhantomMark, SolflareMark, WalletConnectMark } from "@/components/marks";
+import { detectSolWallets, detectWallets, SOL_CHAIN, type SolWalletId, type WalletId } from "@/lib/auth";
 
 function SignInInner() {
   const { ready, address, orbioApproved, orbioChecked, connect, approveOrbio } = useAuth();
   const host = typeof window !== "undefined" ? window.location.host : "intern.money";
   const [wallets, setWallets] = useState<WalletId[]>([]);
+  const [solWallets, setSolWallets] = useState<SolWalletId[]>([]);
+  useEffect(() => {
+    const ts = [0, 400, 1500].map((ms) => setTimeout(() => setSolWallets(detectSolWallets()), ms));
+    return () => ts.forEach(clearTimeout);
+  }, []);
   useEffect(() => {
     // Announcements arrive asynchronously after the request event; look again for a moment.
     const t = setTimeout(() => setWallets(detectWallets()), 0);
@@ -30,7 +35,7 @@ function SignInInner() {
   const next = params.get("next") || "/app";
   const [busy, setBusy] = useState<"wallet" | "orbio" | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const skipOrbio = process.env.NEXT_PUBLIC_DEV_ORBIO === "1";
+  const skipOrbio = process.env.NEXT_PUBLIC_DEV_ORBIO === "1" || SOL_CHAIN;
   const inApp = !!address && (orbioApproved || skipOrbio);
 
   useEffect(() => {
@@ -58,7 +63,7 @@ function SignInInner() {
             Sign in to Intern
           </h1>
           <p className="mt-1.5 text-center text-[13.5px] leading-[1.55] text-ink-soft">
-            {BRAND.features.orbioLogin ? "Pay per run, from about a cent. Start with Google or email, or bring your wallet." : marks("Your wallet is the account. The CREDIT your staked $ORBIO earns is the budget.", 13)}
+            {BRAND.features.orbioLogin ? "Pay per run, from about a cent. Start with Google or email, or bring your wallet." : marks("Your Solana wallet is the account. Burned $INTERN is the budget.", 13)}
           </p>
 
           {!address && BRAND.features.orbioLogin && (
@@ -85,13 +90,42 @@ function SignInInner() {
             <Step
               n={1}
               state={step > 1 ? "done" : "active"}
-              title={address ? `Connected ${shortAddr(address)}` : BRAND.features.orbioLogin ? "Connect a wallet" : "Connect the wallet that holds $ORBIO"}
-              hint={address ? "Signed in. This signature is your login; it never moves tokens." : "Robinhood Chain · stake $ORBIO to earn CREDIT · you sign one message, no gas"}
+              title={address ? `Connected ${shortAddr(address)}` : SOL_CHAIN ? "Connect your Solana wallet" : BRAND.features.orbioLogin ? "Connect a wallet" : "Connect the wallet that holds $ORBIO"}
+              hint={address ? "Signed in. This signature is your login; it never moves tokens." : SOL_CHAIN ? "Solana · one signature, no transaction, no fee" : "Robinhood Chain · stake $ORBIO to earn CREDIT · you sign one message, no gas"}
             >
               {!address && (
                 <>
                   <div className="mt-3 grid gap-2">
-                    {(["metamask", "rabby", "robinhood", "walletconnect"] as WalletId[]).map((w) => {
+                    {SOL_CHAIN && (["phantom", "solflare", "backpack"] as WalletId[]).map((w) => {
+                      const present = solWallets.includes(w as SolWalletId);
+                      const Mark = w === "phantom" ? PhantomMark : w === "solflare" ? SolflareMark : SolanaMark;
+                      const name = w === "phantom" ? "Phantom" : w === "solflare" ? "Solflare" : "Backpack";
+                      const deep = w === "phantom" ? `https://phantom.app/ul/browse/${encodeURIComponent(`https://${host}/sign-in`)}?ref=${encodeURIComponent(`https://${host}`)}` : w === "solflare" ? `https://solflare.com/ul/v1/browse/${encodeURIComponent(`https://${host}/sign-in`)}?ref=${encodeURIComponent(`https://${host}`)}` : null;
+                      return (
+                        <button
+                          key={w}
+                          disabled={busy !== null}
+                          onClick={async () => {
+                            if (!present && deep) { window.location.href = deep; return; }
+                            setBusy("wallet");
+                            setErr(null);
+                            try {
+                              await connect(w);
+                            } catch (e) {
+                              setErr((e as Error).message);
+                            }
+                            setBusy(null);
+                          }}
+                          className="inline-flex w-full items-center gap-3 rounded-md border border-ink/15 bg-white px-3 py-2.5 text-left font-mono text-[13px] text-ink transition-colors hover:border-ink disabled:cursor-not-allowed disabled:opacity-45"
+                          title={`Connect ${name}`}
+                        >
+                          <Mark size={18} />
+                          <span className="flex-1">{name}</span>
+                          <span className="text-[11px] text-ink-faint">{busy === "wallet" ? "waiting…" : present ? "tap to connect" : deep ? "opens the app" : "not installed"}</span>
+                        </button>
+                      );
+                    })}
+                    {!SOL_CHAIN && (["metamask", "rabby", "robinhood", "walletconnect"] as WalletId[]).map((w) => {
                       const wcReady = !!process.env.NEXT_PUBLIC_WC_PROJECT_ID;
                       const locked = w === "walletconnect" && !wcReady;
                       const present = w === "walletconnect" ? wcReady : wallets.includes(w) || (w === "metamask" && wallets.includes("injected")) || wallets.length === 0;
@@ -121,7 +155,7 @@ function SignInInner() {
                       );
                     })}
                   </div>
-                  {wallets.length === 0 && (
+                  {!SOL_CHAIN && wallets.length === 0 && (
                     <div className="mt-3 rounded-md border border-ink/10 bg-paper px-3 py-2.5 text-[11.5px] leading-[1.55] text-ink-soft sm:hidden">
                       <p className="font-medium text-ink">No wallet extension here?</p>
                       <p className="mt-0.5">On a phone, tap <span className="font-medium text-ink">MetaMask</span> above: it opens the MetaMask app, you approve there and land back here signed in. Other wallets: open this page inside the wallet app’s browser.</p>
@@ -177,13 +211,12 @@ function SignInInner() {
           {err && <p className="mt-4 rounded-md border border-red-700/30 bg-red-50 px-3 py-2 font-mono text-[12px] text-red-800">{err}</p>}
 
           <div className="mt-8 flex items-center justify-center gap-5 text-ink-faint">
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11px]"><OrbioMark size={14} /> Orbio CREDIT</span>
+            <span className="inline-flex items-center gap-1.5 font-mono text-[11px]"><PhantomMark size={14} /> Phantom</span>
             <span className="inline-flex items-center gap-1.5 font-mono text-[11px]"><OpenRouterMark size={14} /> OpenRouter</span>
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11px]"><RobinhoodMark size={14} /> Robinhood Chain</span>
+            <span className="inline-flex items-center gap-1.5 font-mono text-[11px]"><SolanaMark size={14} /> Solana</span>
           </div>
           <p className="mt-4 text-center text-[12px] leading-[1.6] text-ink-faint">
-            Intern never sees your password or private key and never moves your tokens. Disconnect Orbio or forget a signed
-            key any time under Connections.
+            Intern never sees your private key and never moves your tokens. The only transaction you ever sign is your own burn.
           </p>
         </div>
       </section>
@@ -194,11 +227,11 @@ function SignInInner() {
           <div className="max-w-[26rem]">
             <p className="eyebrow">The loop</p>
             <p className="mt-3 text-[2.2rem] font-medium leading-[1.05] tracking-[-0.03em] text-ink">
-              Stake → CREDIT → your intern works → proof on chain → repeat.
+              Burn $INTERN → AI credit → your intern works → receipt on Solana → repeat.
             </p>
             <p className="mt-4 text-[13.5px] leading-[1.6] text-ink-soft">
-              You sign once. Your interns bill the CREDIT you activate, ask you when it runs low, and every finished run is
-              hashed, and anchored on Robinhood Chain once anchoring is switched on, so anyone can check it did the work.
+              You sign in once. Your interns bill the credit your burns bought, ask you when it runs low, and every finished run
+              leaves a receipt on Solana, so anyone can check it did the work.
             </p>
           </div>
           <DitherMark size={300} className="mx-auto" />

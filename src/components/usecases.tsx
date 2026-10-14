@@ -79,7 +79,7 @@ function WatchScene({ on }: { on: boolean }) {
         </span>
         <div className="min-w-0">
           <p className="text-[14px] font-semibold tracking-[-0.01em] text-ink">Sentry <span className="ml-1 text-[11.5px] font-normal text-ink-faint">ORBIO / RH watch · every 12h</span></p>
-          <p className="truncate text-[12px] text-ink-soft">“Watch $ORBIO price and liquidity, significant transfers, and wallet 0x8366…0951.”</p>
+          <p className="truncate text-[12px] text-ink-soft">“Watch $INTERN price and liquidity, significant transfers, and wallet 7xKX…9fQ1.”</p>
         </div>
       </div>
 
@@ -99,15 +99,15 @@ function WatchScene({ on }: { on: boolean }) {
           <AnimatePresence initial={false}>
             {step >= 3 && (
               <motion.div key="title" variants={rise} initial="hidden" animate="show" transition={{ duration: 0.45, ease: EASE }}>
-                <p className="text-[14px] font-semibold leading-[1.35] text-ink">ORBIO up 12.6% to $0.02173; NVDA pool at $407.5K</p>
+                <p className="text-[14px] font-semibold leading-[1.35] text-ink">INTERN up 12.6% to $0.00217; SOL pool at $407.5K</p>
               </motion.div>
             )}
           </AnimatePresence>
           <ul className="mt-2.5 space-y-2">
             {[
               { check: "Price and pool liquidity vs last run", finding: "$0.02173, up from $0.01929. NVDA pool $407,539 (was $384,005). USDG pool $359,579 (was $203,280)." },
-              { check: "Largest transfer since last run", finding: "218,427 ORBIO in tx 0xb5de…75d6 at block 57065775." },
-              { check: "Watched wallet 0x8366…0951", finding: "Two outbound transfers, 129,504 and 158,919 ORBIO." },
+              { check: "Largest transfer since last run", finding: "2,184,270 INTERN in tx 5b3kQ…wD9r, 41 min ago." },
+              { check: "Watched wallet 7xKX…9fQ2", finding: "Two outbound transfers, 1.29M and 1.58M INTERN." },
             ].map((s, i) => (
               <AnimatePresence key={s.check} initial={false}>
                 {step >= 3 + Math.min(i, 1) && (

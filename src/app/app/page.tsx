@@ -19,6 +19,8 @@ import { Receipts } from "@/components/receipts";
 import { recommendedCapUsd } from "@/intern/spec";
 import { DitherField } from "@/components/dither-field";
 import { DitherMark } from "@/components/dither-mark";
+import { BurnPanel } from "@/components/burn-panel";
+import { BRAND } from "@/lib/brand";
 import { Avatar, publicUrl } from "@/components/app-shell";
 import { Play, Pause, PanelRight, ExternalLink, Trash2, Check, X, ArrowUp, ArrowDown, ChevronUp, Plus, Download, Ellipsis, Pencil, KeyRound, Share2 } from "lucide-react";
 import { JobInput } from "@/components/job-input";
@@ -126,6 +128,8 @@ function Queue({ owner }: { owner: string }) {
                   <a href="https://www.orbio.so/" target="_blank" rel="noreferrer" className="ui-btn ui-btn-sm ui-btn-gold"><Check size={13} strokeWidth={2.4} /> Top up on orbio.so</a>
                   <button disabled={!!busy} onClick={async () => { setBusy(p.id); await api.decide(owner, p.id, "reject").catch(() => undefined); setNote("Thanks. Quiet interns wake within a few minutes of your Orbio balance going up."); await load(); setBusy(null); }} className="ui-btn ui-btn-sm ui-btn-ghost">Done, I topped up</button>
                 </>
+              ) : p.kind === "activate_credit" && p.payload.solana ? (
+                <div className="w-full"><BurnPanel compact creditUsd={0} onCredited={() => { void api.decide(owner, p.id, "reject").catch(() => undefined); setNote("Credited. Quiet interns wake on their next tick."); void load(); }} /></div>
               ) : p.kind === "activate_credit" ? (
                 <button
                   disabled={!!busy}
@@ -520,7 +524,7 @@ function Detail({ m, all, owner, onChange, conns, launched, askDelete, status }:
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="eyebrow">Reports</h2>
-                <span className="text-[11.5px] text-ink-faint">{anchoring ? marks(`${runs?.filter((r) => r.txHash).length ?? 0} anchored on Robinhood Chain`, 12) : "every run hashed"}</span>
+                <span className="text-[11.5px] text-ink-faint">{anchoring ? marks(`${runs?.filter((r) => r.txHash).length ?? 0} anchored on Solana`, 12) : "every run hashed"}</span>
               </div>
               {runs === null ? (
                 <p className="text-[13px] text-ink-soft">Loading…</p>
@@ -708,6 +712,10 @@ function EmptyState({ status, conns }: { status: OrbioStatus | null; conns: Conn
               <a href="https://www.orbio.so/" target="_blank" rel="noreferrer" className={`ui-btn ui-btn-sm ${(idle ?? 0) >= 0.05 ? "" : "ui-btn-gold"}`}>
                 <OrbioMark size={13} /> Top up
               </a>
+            </SetupStep>
+          ) : status?.chain === "solana" ? (
+            <SetupStep n={1} done={(status.burnCreditUsd ?? 0) >= 0.05} title={(status.burnCreditUsd ?? 0) >= 0.05 ? `${fmtUsd(status.burnCreditUsd ?? 0)} of AI credit` : `Burn $${BRAND.ticker} for AI credit`} hint="Burn a little $INTERN from your wallet; you get its market value in AI credit. A run costs about 2¢.">
+              <div className="mt-2"><BurnPanel compact creditUsd={status.burnCreditUsd} /></div>
             </SetupStep>
           ) : (
           <SetupStep n={1} done={orbioOk} title={orbioOk ? "Orbio key signed" : "Sign for your Orbio key"} hint={orbioOk ? "Runs bill the CREDIT you activate." : "One signature in your wallet becomes the gateway key. Then activate CREDIT under Connections."}>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { DiscordMark, GitHubMark, GmailMark, OrbioMark, RobinhoodMark, TelegramMark, XMark } from "./marks";
+import { DiscordMark, GitHubMark, GmailMark, OrbioMark, SolanaMark, TelegramMark, XMark } from "./marks";
 
 /**
  * House rule: every brand named in the copy wears its logo right before the name. Splits a sentence on the brand
@@ -7,9 +7,9 @@ import { DiscordMark, GitHubMark, GmailMark, OrbioMark, RobinhoodMark, TelegramM
  * and puts the mark in front of each.
  */
 const MARKS: Record<string, (p: { size?: number; className?: string }) => ReactNode> = {
-  Robinhood: RobinhoodMark, Orbio: OrbioMark, $ORBIO: OrbioMark, Gmail: GmailMark, GitHub: GitHubMark, Telegram: TelegramMark, Discord: DiscordMark, X: XMark,
+  Solana: SolanaMark, Orbio: OrbioMark, $ORBIO: OrbioMark, Gmail: GmailMark, GitHub: GitHubMark, Telegram: TelegramMark, Discord: DiscordMark, X: XMark,
 };
-const SPLIT = /(Robinhood|\$ORBIO|(?<!\$)Orbio|Gmail|GitHub|Telegram|Discord|(?<=(?:, |and |on ))X(?=[\s.,]|$))/g;
+const SPLIT = /(Solana|\$ORBIO|(?<!\$)Orbio|Gmail|GitHub|Telegram|Discord|(?<=(?:, |and |on ))X(?=[\s.,]|$))/g;
 
 export function marks(text: string, size = 14): ReactNode {
   const parts = text.split(SPLIT);

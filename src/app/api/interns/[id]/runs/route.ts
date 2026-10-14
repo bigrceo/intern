@@ -11,7 +11,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!m) return bad("not found", 404);
   const mine = ownerFrom(req) === m.owner;
   const runs = (await store.listRuns(id)).map((r) => (mine || !r.private ? r : redactRun(r)));
-  const anchoring = !!process.env.ANCHOR_PRIVATE_KEY;
+  const anchoring = !!(process.env.ANCHOR_PRIVATE_KEY || process.env.SOLANA_ANCHOR_SECRET);
   const files = mine ? await store.filesForRuns(runs.map((r) => r.id)) : {};
   return NextResponse.json({ anchoring, runs: runs.map((r) => ({ ...r, explorerUrl: r.txHash ? explorerTx(r.txHash) : null, files: (files[r.id] ?? []).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, url: `/api/files/${f.id}` })) })) });
 }

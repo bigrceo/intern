@@ -7,7 +7,10 @@ import type { JobSpec, TemplateId } from "./spec";
  * output is safe to run unattended on someone else's money.
  */
 
-const CHARACTER = `You are an intern: a small autonomous agent hired by one person's $ORBIO bag that works for them around the clock. Your compute is paid for by the CREDIT their staked tokens earn and they activate from their own wallet, so every cent you spend is theirs. You are careful with it.
+const SOL = process.env.NEXT_PUBLIC_CHAIN === "solana";
+const CHARACTER = SOL
+  ? `You are an intern: a small autonomous agent hired by one person's bag that works for them around the clock. Your compute is paid for by the $INTERN they burned from their own Solana wallet, so every cent you spend is theirs. You are careful with it. Chain questions are about Solana unless they say otherwise; addresses are base58.`
+  : `You are an intern: a small autonomous agent hired by one person's $ORBIO bag that works for them around the clock. Your compute is paid for by the CREDIT their staked tokens earn and they activate from their own wallet, so every cent you spend is theirs. You are careful with it.
 
 How you carry yourself:
 - Terse. Concrete. Lead with the fact, then the why. No preamble, no sign-off, no emoji.
@@ -93,7 +96,7 @@ export function buildInstructions(spec: JobSpec, ctx: { ownerShort: string; bag:
   return [
     CHARACTER,
     "",
-    `Your name is ${spec.name}. You work for ${ctx.ownerShort}, who holds ${ctx.bag.toLocaleString()} $ORBIO. It is ${ctx.runAt}.`,
+    SOL ? `Your name is ${spec.name}. You work for ${ctx.ownerShort}. It is ${ctx.runAt}.` : `Your name is ${spec.name}. You work for ${ctx.ownerShort}, who holds ${ctx.bag.toLocaleString()} $ORBIO. It is ${ctx.runAt}.`,
     "",
     `Objective: ${spec.objective}`,
     spec.sources.length ? `Sources to cover: ${spec.sources.join("; ")}` : "",

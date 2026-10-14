@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { solChainRead } from "./sol-read";
 import { webFetchTool, type LocalTool } from "./llm";
 import { TEMPLATE_IDS, type JobSpec, type TemplateId, type ToolId } from "./spec";
 import { DOC_FORMATS, DOC_MIME, renderDocument, safeFilename, type DocFormat } from "./documents";
@@ -59,7 +60,8 @@ function tool<S extends z.ZodType>(t: { name: string; description: string; input
 }
 
 /** Tools that read contracts rather than pages: the public page where a reader can check the same numbers. */
-const TOOL_SOURCE: Record<string, string> = { credit_market: "https://www.orbio.so/protocol", chain_read: "https://robinhoodchain.blockscout.com" };
+export const SOLANA = process.env.NEXT_PUBLIC_CHAIN === "solana";
+const TOOL_SOURCE: Record<string, string> = { credit_market: "https://www.orbio.so/protocol", chain_read: SOLANA ? "https://solscan.io" : "https://robinhoodchain.blockscout.com" };
 
 export type BuiltTools = { tools: LocalTool[]; webSearch: boolean };
 
@@ -103,6 +105,25 @@ export function buildTools(ids: readonly ToolId[], deps: ToolDeps): BuiltTools {
     return Buffer.from(h.slice(128, 128 + len * 2), "hex").toString("utf8");
   };
   const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+
+  const solRead = tool({
+    name: "chain_read",
+    description:
+      "Read Solana straight from the RPC. token_info: decimals, total supply, mint and freeze authority. balance_of: a wallet's balance of a token. token_transfers: the largest balance changes of a token over its most recent transactions, for whale moves. wallet_activity: a wallet's SOL balance and its recent token moves. Addresses are base58. Read-only.",
+    inputSchema: z.object({
+      action: z.enum(["token_info", "token_transfers", "balance_of", "wallet_activity"]),
+      token: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/).optional().describe("Token mint address (not needed for wallet_activity)"),
+      wallet: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/).optional().describe("Wallet address, for balance_of and wallet_activity"),
+      limit: z.number().int().min(1).max(25).default(15),
+    }),
+    execute: traced("chain_read", (a: { action: string; token?: string; wallet?: string }, r: unknown) => `${a.action} ${(a.wallet ?? a.token ?? "").slice(0, 4)}…${(a.wallet ?? a.token ?? "").slice(-4)} · ${brief(r, 90)}`, async (a: { action: string; token?: string; wallet?: string; limit?: number }) => {
+      try {
+        return await solChainRead(f, a);
+      } catch (e) {
+        return { error: (e as Error).message };
+      }
+    }),
+  });
 
   const chainRead = tool({
     name: "chain_read",
@@ -219,10 +240,10 @@ export function buildTools(ids: readonly ToolId[], deps: ToolDeps): BuiltTools {
   const tokenMarket = tool({
     name: "token_market",
     description:
-      "Live DEX market data for a token on Robinhood Chain (or any chain DexScreener indexes): price, liquidity, 24h volume, buys/sells, price change over 5m/1h/6h/24h, per pool. Search by symbol, name, or contract address.",
+      `Live DEX market data for a token on ${SOLANA ? "Solana" : "Robinhood Chain"} (or any chain DexScreener indexes): price, liquidity, 24h volume, buys/sells, price change over 5m/1h/6h/24h, per pool. Search by symbol, name, or contract/mint address.`,
     inputSchema: z.object({
       query: z.string().min(1).max(80).describe("Symbol, name, or 0x address"),
-      chain: z.string().default("robinhood").describe("DexScreener chain id, e.g. robinhood"),
+      chain: z.string().default(SOLANA ? "solana" : "robinhood").describe(`DexScreener chain id, e.g. ${SOLANA ? "solana" : "robinhood"}`),
       limit: z.number().int().min(1).max(10).default(3),
     }),
     execute: traced("token_market", (a: { query: string; chain: string; limit: number }, r: unknown) => `${a.query} on ${a.chain} · ${brief(r, 90)}`, async ({ query, chain, limit }) => {
@@ -554,7 +575,7 @@ export function buildTools(ids: readonly ToolId[], deps: ToolDeps): BuiltTools {
   const webFetch: LocalTool = { ...webFetchTool(f), execute: traced("web_fetch", (a: { url: string }, r: unknown) => `${a.url} · ${brief(r, 90)}`, webFetchTool(f).execute as never) as never };
 
   const all: Partial<Record<ToolId, LocalTool>> = {
-    chain_read: chainRead,
+    chain_read: SOLANA ? solRead : chainRead,
     token_market: tokenMarket,
     credit_market: creditMarket,
     deliver,

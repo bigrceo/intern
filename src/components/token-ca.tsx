@@ -7,13 +7,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-/** The one official $INTERN contract. Clones with the same name exist on Robinhood Chain; this is the only real one. */
+/** The one official $INTERN contract. Clones with the same name exist on Solana; this is the only real one. */
 export const INTERN_CA = BRAND.token;
 
 const LINKS = [
   ...(BRAND.buyUrl ? [{ href: BRAND.buyUrl, label: `Buy $${BRAND.ticker}` }] : []),
   ...(BRAND.chartUrl ? [{ href: BRAND.chartUrl, label: "Chart" }] : []),
-  { href: `https://robinhoodchain.blockscout.com/token/${INTERN_CA}`, label: "Explorer" },
+  { href: `https://solscan.io/token/${INTERN_CA}`, label: "Explorer" },
   ...(BRAND.social.x ? [{ href: BRAND.social.x, label: "X" }] : []),
 ];
 
@@ -26,7 +26,7 @@ export function TokenCA() {
     <section id="token" className="mx-auto max-w-[1120px] scroll-mt-24 px-4 pb-16 sm:px-6">
       <div className="card-shadow rounded-card bg-white p-6 sm:p-8">
         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between">
-          <p className="eyebrow">${BRAND.ticker} · official contract · {marks("Robinhood Chain", 12)}</p>
+          <p className="eyebrow">${BRAND.ticker} · official contract · {marks("Solana", 12)}</p>
           <p className="text-[13px] text-ink-faint">{INTERN_CA ? BRAND.market : "Launching soon on Pons"}</p>
         </div>
 

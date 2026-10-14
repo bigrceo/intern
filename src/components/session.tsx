@@ -61,8 +61,8 @@ const RUNS: Run[] = [
   {
     id: "run_CY79o-u9",
     name: "Tide",
-    template: "ORBIO / RH watch · hourly",
-    sentence: "Every hour, tell me if $ORBIO liquidity or price on Robinhood Chain moved more than 5%, and why.",
+    template: "Token watch · hourly",
+    sentence: "Every hour, tell me if $INTERN liquidity or price on Solana moved more than 5%, and why.",
     model: "gemini-3.8-flash",
     cost: "$0.0165",
     calls: 4,
@@ -76,7 +76,7 @@ const RUNS: Run[] = [
       { at: 21.0, kind: "tool", label: "chain_read", detail: "transfer 101,071.69 ORBIO · block 54329173" },
       { at: 27.0, kind: "tool", label: "chain_read", detail: "transfer 26,362.85 ORBIO · block 54328982" },
       { at: 36.0, kind: "write", label: "wrote alert", detail: "4 model calls · 150-word cap · signal: medium" },
-      { at: 45.7, kind: "done", label: "delivered", detail: "sha256 3f1b5d83…8dbe3 · queued for Robinhood Chain" },
+      { at: 45.7, kind: "done", label: "delivered", detail: "sha256 3f1b5d83…8dbe3 · queued for Solana" },
     ],
     reply: {
       at: 45.7,

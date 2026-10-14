@@ -8,7 +8,7 @@ import { BRAND } from "@/lib/brand";
 import { fmtBag, shortAddr, timeUntil, type ApiIntern } from "@/lib/api";
 import { AppDataProvider, useAppData } from "@/lib/app-data";
 import { BrandMark, Face, ProfileFace, Wordmark } from "./logo";
-import { OpenRouterMark, OrbioMark, RobinhoodMark } from "./marks";
+import { OpenRouterMark, OrbioMark, SolanaMark } from "./marks";
 import { AnimatePresence, motion } from "motion/react";
 import { PanelLeft, Orbit, Rocket, Cable, Telescope, MessagesSquare, Plus, LogOut, ChevronsUpDown, Copy, Check, Globe, Ellipsis, Share2, ExternalLink, Trash2, Wallet, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -231,7 +231,7 @@ export function PoweredBy() {
         <span className="flex items-center gap-4">
           <a href="https://www.orbio.so" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><OrbioMark size={13} /> credits by Orbio</a>
           <a href="https://openrouter.ai" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><OpenRouterMark size={13} /> models via OpenRouter</a>
-          <a href="https://robinhoodchain.blockscout.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><RobinhoodMark size={13} /> anchored on Robinhood Chain</a>
+          <a href="https://solscan.io" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink"><SolanaMark size={13} /> anchored on Solana</a>
         </span>
       </div>
     </footer>

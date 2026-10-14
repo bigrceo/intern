@@ -21,8 +21,8 @@ import { MACHINE_SPEC, ThreadComposer, type Attachment, type Effort, type Machin
 const STARTERS = [
   { icon: ChartLine, title: "Chart the launchpad", text: "Pull the top 10 Orbio launchpad tokens by market cap from orbio.so/api/protocol/agents, chart them, and show me the image." },
   { icon: Globe, title: "Screenshot a site", text: "Open orbio.so/launchpad, take a screenshot, and tell me what's on it." },
-  { icon: Wallet, title: "Read a wallet", text: "Summarise the last transactions of wallet 0x… on Robinhood Chain in a small table." },
-  { icon: Radar, title: "Check a token", text: "Find $ORBIO's price and 24h volume on Robinhood Chain and show them in a table." },
+  { icon: Wallet, title: "Read a wallet", text: "Summarise the last transactions of wallet 0x… on Solana in a small table." },
+  { icon: Radar, title: "Check a token", text: "Find $ORBIO's price and 24h volume on Solana and show them in a table." },
 ];
 
 function ago(t: number) {

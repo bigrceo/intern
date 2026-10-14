@@ -4,13 +4,11 @@ import { SiteFooter } from "@/components/site-footer";
 import { DocsNav } from "@/components/docs/DocsNav";
 import { marks } from "@/components/inline-marks";
 import { BRAND } from "@/lib/brand";
-import { ORBIO } from "@/intern/orbio";
-import { ANCHOR_TO } from "@/intern/anchor";
 
 export const metadata: Metadata = { title: "Docs", description: `How ${BRAND.name} works: funding, jobs, approvals, on-chain receipts, contracts, API and source code.` };
 
-const EXPLORER = "https://robinhoodchain.blockscout.com";
-const ANCHOR_WALLET = process.env.NEXT_PUBLIC_ANCHOR_WALLET || "0xcdd0eD25F553a252F11aDC8472adb66396222817";
+const EXPLORER = "https://solscan.io";
+const SOL_ANCHOR = process.env.NEXT_PUBLIC_ANCHOR_WALLET || "";
 
 const SECTIONS = [
   { id: "overview", label: "Overview" },
@@ -45,28 +43,29 @@ export default function DocsPage() {
             <p>Everything you need to check what {BRAND.name} does, how it is paid for, and where the proof lives. Every claim on this page links to something you can open yourself.</p>
 
             <h2 id="overview">Overview</h2>
-            <p><strong>Your bag runs an agent.</strong> You write a job in one sentence. An AI {n} does it on your schedule, paid by the CREDIT your staked {marks("$ORBIO", 14)} earns. No card, no API key, nothing to install. Sell the bag and it stops.</p>
+            <p><strong>Your bag runs an agent.</strong> You write a job in one sentence. An AI {n} does it on your schedule, paid for by burning a little of your {marks("$INTERN", 14)} bag on {marks("Solana", 14)}. No card, no API key, nothing to install.</p>
             <ul>
-              <li><strong>One sentence in</strong>: “Ping me if $ORBIO liquidity moves 10%.” becomes a plan you can edit before anything runs.</li>
+              <li><strong>One sentence in</strong>: “Ping me if $INTERN liquidity moves 10%.” becomes a plan you can edit before anything runs.</li>
               <li><strong>It works while you don&apos;t</strong>: on your schedule, within the budget you set.</li>
-              <li><strong>A receipt out</strong>: every job leaves a public receipt on {marks("Robinhood Chain", 14)}.</li>
+              <li><strong>A receipt out</strong>: every job leaves a public receipt on {marks("Solana", 14)}.</li>
             </ul>
 
             <h2 id="how-it-works">How it works</h2>
             <ol>
-              <li><strong>Sign in with your wallet.</strong> One signature, no email, no password.</li>
-              <li><strong>Sign {marks("Orbio", 14)}&apos;s key message once.</strong> That signature becomes the key your {n}s are billed to. It cannot sign transactions or move tokens.</li>
+              <li><strong>Sign in with your Solana wallet.</strong> Phantom, Solflare or Backpack: one signature, no transaction, no fee, no email, no password.</li>
+              <li><strong>Burn a little $INTERN for AI credit.</strong> One transaction from your wallet; the burn is read back from the chain and credited at its market value.</li>
               <li><strong>Write the job.</strong> It is turned into a plan: which tools, which sources, how often, and a maximum spend per run. You can change all of it.</li>
               <li><strong>It runs.</strong> A scheduler wakes due {n}s every minute. Each run reads the chain, the market or the web, writes a report and sends it to Telegram, Discord or its public page.</li>
-              <li><strong>It leaves a receipt.</strong> Cost, AI model, duration, the list of tools it used and a fingerprint (sha256) of what it wrote, written to Robinhood Chain.</li>
+              <li><strong>It leaves a receipt.</strong> Cost, AI model, duration, the list of tools it used and a fingerprint (sha256) of what it wrote, written to Solana.</li>
             </ol>
 
             <h2 id="funding">Who pays</h2>
-            <p>Your bag does. Staked $ORBIO mints Orbio <strong>CREDIT</strong> every hour; 1 CREDIT buys $1 of AI. You activate CREDIT from your own wallet into an AI balance, and runs are billed to it at the model&apos;s real price.</p>
+            <p>Your bag does. You <strong>burn $INTERN</strong> from your own Solana wallet (a standard SPL burn: the tokens are destroyed, not sent anywhere). {BRAND.name} reads the burn back from the chain, values it at the token&apos;s market price at that moment (DexScreener, deepest Solana pool) and adds that amount of <strong>AI credit</strong> to your account. Runs are billed to it at the model&apos;s real price; a typical run costs about 2¢.</p>
             <ul>
-              <li>{BRAND.name} never holds your tokens or your private key, and never moves anything.</li>
-              <li>When the balance cannot pay for the next run, the {n} goes quiet and asks you once, with an “Activate CREDIT” card sized to about a week.</li>
-              <li>Anyone can <strong>Fuel</strong> a public {n}: burn 1, 2 or 5 of their own CREDIT into its balance with one signature. The giver is listed on its page.</li>
+              <li>Every burn is counted once, and only for the wallet that signed it. Your burns are listed, with links to Solscan, under Connections.</li>
+              <li>{BRAND.name} never holds your tokens or your private key. The only transaction you ever sign is your own burn.</li>
+              <li>When the credit cannot pay for the next run, the {n} goes quiet and asks you once to burn a little more.</li>
+              <li>Every run that uses AI burns supply: the more {n}s work, the less $INTERN there is.</li>
             </ul>
 
             <h2 id="jobs">What it can do</h2>
@@ -92,27 +91,24 @@ export default function DocsPage() {
             </ul>
 
             <h2 id="receipts">On-chain receipts</h2>
-            <p>When a run finishes, its output is hashed (sha256) and a small transaction is sent on {marks("Robinhood Chain", 14)} from the {BRAND.name} receipts wallet to a fixed anchor address with no code. The transaction data is the ABI encoding of:</p>
-            <pre><code>(string internId, string runId, bytes32 outputHash, uint256 costMicroUsd, uint256 timestamp)</code></pre>
+            <p>When a run finishes, its output is hashed (sha256) and a small transaction is sent on {marks("Solana", 14)} from the {BRAND.name} receipts wallet through the Memo program. The memo is the receipt, in plain text:</p>
+            <pre><code>intern:v1:&lt;internId&gt;:&lt;runId&gt;:&lt;sha256 of the report&gt;:&lt;cost in micro-dollars&gt;:&lt;unix time&gt;</code></pre>
             <p>Anyone can decode it from the explorer and compare the hash with the report shown on the {n}&apos;s public page. Each public page lists every run with its hash and a link to its transaction.</p>
 
             <h2 id="verify">Verify it yourself (2 minutes)</h2>
             <ol>
               <li>Open any {n} on <a href="/sky">The sky</a> and pick a run.</li>
-              <li>Click its transaction link: it opens on the Robinhood Chain explorer, sent by the receipts wallet to the anchor address below.</li>
-              <li>Decode the input data with the layout above: the run id and hash match the page.</li>
+              <li>Click its transaction link: it opens on Solscan, signed by the receipts wallet below.</li>
+              <li>Read the memo: the run id and the hash match the page.</li>
               <li>Or read it raw: <code>GET /api/interns/&lt;id&gt;/runs</code> returns every run with <code>outputHash</code>, <code>txHash</code> and <code>explorerUrl</code>.</li>
             </ol>
 
             <h2 id="contracts">Addresses</h2>
             <table>
               <tbody>
-                <tr><td>Receipts wallet</td><td><Addr a={ANCHOR_WALLET} /></td></tr>
-                <tr><td>Anchor address</td><td><Addr a={ANCHOR_TO} /></td></tr>
-                <tr><td>$ORBIO token</td><td><Addr a={ORBIO.orbio} kind="token" /></td></tr>
-                <tr><td>Orbio CREDIT</td><td><Addr a={ORBIO.credit} kind="token" /></td></tr>
-                <tr><td>Orbio staking</td><td><Addr a={ORBIO.staking} /></td></tr>
-                <tr><td>Chain</td><td>{marks("Robinhood Chain", 14)} (chain id {ORBIO.chainId})</td></tr>
+                {SOL_ANCHOR && <tr><td>Receipts wallet</td><td><a href={`https://solscan.io/account/${SOL_ANCHOR}`} target="_blank" rel="noreferrer"><code>{SOL_ANCHOR}</code></a></td></tr>}
+                <tr><td>Memo program</td><td><a href="https://solscan.io/account/MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" target="_blank" rel="noreferrer"><code>MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr</code></a></td></tr>
+                <tr><td>Chain</td><td>{marks("Solana", 14)} mainnet</td></tr>
               </tbody>
             </table>
 

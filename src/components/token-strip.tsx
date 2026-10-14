@@ -20,7 +20,7 @@ export function TokenStrip() {
       <button type="button" onClick={copy} aria-label={`Copy the $${BRAND.ticker} contract address`} className="inline-flex items-center gap-1.5 rounded-[8px] bg-mint-2 px-2.5 py-1.5 font-code text-[12px] text-pine transition-colors hover:bg-mint">
         {ca.slice(0, 6)}…{ca.slice(-4)} {copied ? <Check size={13} strokeWidth={2.2} /> : <Copy size={13} strokeWidth={2} />}
       </button>
-      <span className="hidden text-[11.5px] text-muted xl:inline">{marks("on Robinhood Chain", 12)}</span>
+      <span className="hidden text-[11.5px] text-muted xl:inline">{marks("on Solana", 12)}</span>
       <span className="ml-auto flex gap-1.5">
         {BRAND.chartUrl && <Link href={BRAND.chartUrl} target="_blank" rel="noreferrer" className="rounded-[8px] px-3 py-1.5 text-[12.5px] font-medium text-pine ring-1 ring-inset ring-sage/60 transition-colors hover:bg-mint-2">Chart</Link>}
         {BRAND.buyUrl && <Link href={BRAND.buyUrl} target="_blank" rel="noreferrer" className="btn-grad rounded-[8px] px-3.5 py-1.5 text-[12.5px] font-medium text-white">Buy ${BRAND.ticker}</Link>}

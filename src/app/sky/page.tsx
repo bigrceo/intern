@@ -12,8 +12,8 @@ import { fmtUsd } from "@/lib/api";
 
 /** Jobs to start from while the sky is empty; shown as examples, never as running interns. */
 const STARTERS = [
-  { kind: "Watch", title: "ORBIO liquidity alert", job: "Ping me if $ORBIO liquidity moves 10%." },
-  { kind: "Digest", title: "Evening brief", job: "At 9pm, five bullets from https://www.orbio.so/build." },
+  { kind: "Watch", title: "$INTERN liquidity alert", job: "Ping me if $INTERN liquidity moves 10%." },
+  { kind: "Digest", title: "Evening brief", job: "At 9pm, five bullets on what moved in Solana memecoins today." },
   { kind: "Repo", title: "Nightly changelog", job: "Every night, read the day's commits on my repo and open a PR adding a CHANGELOG entry." },
 ];
 

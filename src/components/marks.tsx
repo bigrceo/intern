@@ -44,6 +44,9 @@ export const GitHubMark = (p: P) => <Mono src="/brands/github.svg" label="GitHub
 export const TelegramMark = (p: P) => <Mono src="/brands/telegram.svg" label="Telegram" color="#26A5E4" {...p} />;
 export const XMark = (p: P) => <Mono src="/brands/x.svg" label="X" {...p} />;
 export const DiscordMark = (p: P) => <Mono src="/brands/discord.svg" label="Discord" color="#5865F2" {...p} />;
+export const SolanaMark = (p: P) => <Mono src="/brands/solana.svg" label="Solana" color="#9945FF" {...p} />;
+export const PhantomMark = (p: P) => <Img src="/brands/phantom.svg" alt="Phantom" {...p} />;
+export const SolflareMark = (p: P) => <Img src="/brands/solflare.svg" alt="Solflare" {...p} />;
 export const GmailMark = (p: P) => <Img src="/brands/gmail.svg" alt="Gmail" {...p} />;
 
 /** Auto routing is OpenRouter picking the model, so it wears OpenRouter's mark. */

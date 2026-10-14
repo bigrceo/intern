@@ -45,7 +45,7 @@ export default async function PublicInternPage({ params }: PageProps<"/s/[id]">)
   const quiet = m.status === "quiet" || m.status === "paused";
   const tone = fuelTone(m.earnPerDayUsd, m.burnPerDayUsd, quiet);
   const anchored = runs.filter((r) => r.txHash).length;
-  const anchoring = !!process.env.ANCHOR_PRIVATE_KEY;
+  const anchoring = !!(process.env.ANCHOR_PRIVATE_KEY || process.env.SOLANA_ANCHOR_SECRET);
   const keyRemaining = m.key ? Math.max(0, m.key.limitUsd - m.key.spentUsd) : 0;
   // The feed shows what it did; failed and quiet runs count in the stats but are noise on a public page.
   const feed = runs.filter((r) => r.status === "done");
@@ -69,7 +69,7 @@ export default async function PublicInternPage({ params }: PageProps<"/s/[id]">)
               <h1 className="mt-2 text-[44px] leading-[1] tracking-[-0.04em] text-ink sm:text-[56px]">{m.name}</h1>
               <p className="mt-3 max-w-[34rem] text-[18px] leading-[1.45] tracking-[-0.01em] text-ink [overflow-wrap:anywhere]">“{shortenHexes(m.spec.objective)}”</p>
               <p className="mt-3 font-mono text-[12px] text-ink-soft">
-                {m.id} · {TEMPLATE_LABEL[m.spec.template]} · works for {shortAddr(m.owner)} · {owner ? marks(`${fmtBag(bagNow)} $ORBIO`, 12) : ""}
+                {m.id} · {TEMPLATE_LABEL[m.spec.template]} · works for {shortAddr(m.owner)} · {owner && /^0x/.test(m.owner) ? marks(`${fmtBag(bagNow)} $ORBIO`, 12) : ""}
               </p>
               <p className="mt-1 font-mono text-[12px] text-ink-faint">tools: {m.spec.tools.map((t) => TOOL_LABEL[t]).join(", ")}</p>
               {latest && !hidden && (
@@ -103,7 +103,7 @@ export default async function PublicInternPage({ params }: PageProps<"/s/[id]">)
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="runs" value={String(m.runsTotal)} hint={m.runsFailed ? `${m.runsFailed} failed` : "none failed"} />
-            <Stat label={anchoring ? "anchored" : "hashed"} value={String(anchoring ? anchored : runs.filter((r) => r.outputHash).length)} hint={anchoring ? "Robinhood Chain" : "anchoring soon"} />
+            <Stat label={anchoring ? "anchored" : "hashed"} value={String(anchoring ? anchored : runs.filter((r) => r.outputHash).length)} hint={anchoring ? "Solana" : "anchoring soon"} />
             <Stat label="calls" value={`${m.hits} · ${m.misses}`} hint={m.openCalls.length ? `hits · misses, ${m.openCalls.length} open` : "hits · misses"} />
             <Stat label="cadence" value={CADENCE_LABEL[m.cadence as Cadence] ?? m.cadence} />
             <Stat label="earns" value={staked > 0 ? fmtUsd(m.earnPerDayUsd) : "—"} hint={staked > 0 ? "per day, estimate" : "owner isn't staking"} />

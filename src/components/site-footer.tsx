@@ -20,7 +20,6 @@ const COLS: [string, { href: string; label: string; external?: boolean }[]][] = 
   ["Learn", [
     { href: "/#how", label: "How it works" },
     { href: "/docs", label: "Docs" },
-    { href: "https://www.orbio.so/build", label: "Orbio Build Week", external: true },
     ...(BRAND.social.github ? [{ href: BRAND.social.github, label: "Source", external: true }] : []),
     ...(BRAND.social.x ? [{ href: BRAND.social.x, label: `${BRAND.name} on X`, external: true }] : []),
   ]],
@@ -43,7 +42,7 @@ export function SiteFooter() {
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,0.7fr))_minmax(0,1.3fr)]">
           <div>
             <Logo size={32} />
-            <p className="mt-4 max-w-[280px] text-[13.5px] leading-relaxed text-muted">{marks("AI agents paid for by your staked $ORBIO. Write one sentence; get a receipt for every job.", 13)}</p>
+            <p className="mt-4 max-w-[280px] text-[13.5px] leading-relaxed text-muted">{marks("AI agents paid for by burning $INTERN. Write one sentence; get a receipt on Solana for every job.", 13)}</p>
           </div>
           {COLS.map(([title, links]) => (
             <div key={title}>
@@ -64,7 +63,7 @@ export function SiteFooter() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                router.push(`/app?job=${encodeURIComponent(job.trim() || "Every morning, tell me what moved on Robinhood Chain and why.")}`);
+                router.push(`/app?job=${encodeURIComponent(job.trim() || "Every morning, tell me what moved on Solana and why.")}`);
               }}
               className="mt-4 flex items-center gap-2 rounded-btn bg-white p-1.5 pl-3 ring-1 ring-line transition-shadow focus-within:ring-sage"
             >
@@ -77,7 +76,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-12 flex flex-col gap-3 border-t border-line pt-6 text-[12.5px] text-muted-2 sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} {BRAND.name} · {marks("Built for Orbio Build Week", 12)} · <Link href="/sky" className="hover:text-ink">Every run is public</Link></p>
+          <p>© {new Date().getFullYear()} {BRAND.name} · {marks("Built on Solana", 12)} · <Link href="/sky" className="hover:text-ink">Every run is public</Link></p>
           <div className="flex items-center gap-1">
             {BRAND.social.x && <Link href={BRAND.social.x} target="_blank" rel="noreferrer" aria-label={`${BRAND.name} on X`} className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-mint-2 hover:text-ink"><XIcon size={13} /></Link>}
             {BRAND.social.telegramBot && <Link href={`https://t.me/${BRAND.social.telegramBot}`} target="_blank" rel="noreferrer" aria-label={`${BRAND.name} bot on Telegram`} className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-mint-2 hover:text-ink"><TelegramMark size={15} /></Link>}

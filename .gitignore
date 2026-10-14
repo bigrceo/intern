@@ -52,3 +52,5 @@ deploy/.env
 x-launch-pack/fonts/
 video/ad/node_modules/
 video/ad/stills/
+.sol-anchor
+.sol-anchor.pub

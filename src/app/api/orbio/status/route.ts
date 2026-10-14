@@ -7,7 +7,8 @@ import { estimateEarnPerDay } from "@/intern/budget";
 import { creditTokensOf, keyMessage, syncActivations } from "@/intern/orbio";
 import * as store from "@/intern/store";
 import { disconnect as orbioDisconnect, isWalletOwner, oauthConfig } from "@/intern/orbio-oauth";
-import { grantIfEligible, walletHasHistory } from "@/intern/trial";
+import { grantIfEligible, trialOf, walletHasHistory } from "@/intern/trial";
+import { isSolOwner } from "@/intern/solana";
 import { createHash, randomBytes } from "node:crypto";
 
 const DEVICE = "intern_device";
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
   // background and its credits show on the next refresh.
   const sync = wallet ? syncActivations(owner).catch(() => 0) : Promise.resolve(0);
   const [trial] = await Promise.all([
-    grantIfEligible(owner, { signals: { device, ipHash, realWallet: (o) => walletHasHistory(o) } }).catch(() => null),
+    (isSolOwner(owner) ? trialOf(owner) : grantIfEligible(owner, { signals: { device, ipHash, realWallet: (o) => walletHasHistory(o) } })).catch(() => null),
     Promise.race([sync, new Promise((ok) => setTimeout(ok, 1000))]),
   ]);
   const [orbio, bag, staked, creditTokens, o, avatar, activations, pending] = await Promise.all([
@@ -44,21 +45,25 @@ export async function GET(req: Request) {
   const balance = orbio ? await orbio.getBalance().catch(() => null) : null;
   const activationCard = pending.find((p) => p.kind === "activate_credit") ?? (await store.listProposals(owner, "approved")).find((p) => p.kind === "activate_credit") ?? null;
   const canWrite = !!sessionFrom(req) || process.env.ALLOW_HEADER_AUTH === "1" || process.env.NODE_ENV !== "production";
+  // Solana wallets pay by burning $INTERN: no Orbio key to sign, the burn credit is their own balance.
+  const sol = isSolOwner(owner);
   const res = NextResponse.json({
-    approved: !!orbio,
+    approved: sol ? true : !!orbio,
+    chain: sol ? "solana" : "robinhood",
+    burnCreditUsd: sol ? Math.round((trial?.remainingUsd ?? 0) * 100) / 100 : null,
     avatar,
     bag,
     staked,
     earnPerDayUsd: estimateEarnPerDay(staked),
     /** Activated AI balance: the gateway's figure when it answers, else verified activations minus recorded spend. */
     // The person's own balance only; the free trial is reported separately under `trial` (never counted twice).
-    idleCreditsUsd: (balance?.raw as { trial?: boolean } | undefined)?.trial ? Math.max(0, o?.orbioBalanceUsd ?? 0) : (balance?.availableUsd ?? o?.orbioBalanceUsd ?? 0),
+    idleCreditsUsd: sol ? (trial?.remainingUsd ?? 0) : (balance?.raw as { trial?: boolean } | undefined)?.trial ? Math.max(0, o?.orbioBalanceUsd ?? 0) : (balance?.availableUsd ?? o?.orbioBalanceUsd ?? 0),
     balanceSource: balance?.raw && (balance.raw as { gateway?: boolean }).gateway ? "gateway" : "ledger",
     /** CREDIT tokens in the wallet, not yet activated. */
     creditTokensUsd: creditTokens,
     canWrite,
     oauth: !!o?.orbioOAuth,
-    trial: trial ? { creditUsd: trial.creditUsd, remainingUsd: Math.round(trial.remainingUsd * 100) / 100, expiresAt: trial.expiresAt, daysLeft: Math.max(0, Math.ceil((trial.expiresAt - Date.now()) / 86_400_000)), active: trial.active } : null,
+    trial: trial && !sol ? { creditUsd: trial.creditUsd, remainingUsd: Math.round(trial.remainingUsd * 100) / 100, expiresAt: trial.expiresAt, daysLeft: Math.max(0, Math.ceil((trial.expiresAt - Date.now()) / 86_400_000)), active: trial.active } : null,
     kind: o?.authKind ?? "wallet",
     orbio: { epoch: o?.orbioEpoch ?? 0, signedAt: o?.orbioKeySignedAt ?? null, message: keyMessage(o?.orbioEpoch ?? 0), dev: process.env.ALLOW_DEV_ORBIO === "1", activations, activationCard: activationCard ? { id: activationCard.id, amountUsd: Number(activationCard.payload.amountUsd ?? 0), status: activationCard.status } : null },
   });

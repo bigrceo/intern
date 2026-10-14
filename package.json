@@ -14,7 +14,10 @@
     "@metamask/sdk": "^0.34.0",
     "@novnc/novnc": "^1.7.0",
     "@paper-design/shaders-react": "0.0.80",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
     "@walletconnect/ethereum-provider": "^2.24.0",
+    "bs58": "^6.0.0",
     "docx": "^9.7.1",
     "lucide-react": "^1.41.0",
     "matter-js": "^0.20.0",
@@ -24,6 +27,7 @@
     "pg": "^8.23.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "tweetnacl": "^1.0.3",
     "viem": "^2.56.3",
     "zod": "^4.5.4"
   },
