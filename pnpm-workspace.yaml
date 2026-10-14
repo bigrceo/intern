@@ -1,6 +1,6 @@
 allowBuilds:
   '@reown/appkit': false
-  bigint-buffer: set this to true or false
+  bigint-buffer: false
   bufferutil: false
   sharp: false
   unrs-resolver: false
